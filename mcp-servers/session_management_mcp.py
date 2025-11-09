@@ -250,21 +250,56 @@ def _load_session_data(name: str) -> Dict[str, Any]:
         with open(session_file, 'r') as f:
             return json.load(f)
     except json.JSONDecodeError as e:
-        raise ValueError(f"Corrupted session.json for '{name}': {e}")
+        raise ValueError(f"Corrupted session.json for '{name}': {e}") from e
+
+
+def _atomic_write_session_json(session_path: Path, data: Dict[str, Any]) -> None:
+    """Atomically write session.json to prevent data corruption.
+
+    Uses temp file + atomic rename to ensure session.json is never partially written.
+
+    Args:
+        session_path: Path to session directory
+        data: Session data to write
+
+    Raises:
+        ValueError: If write fails
+    """
+    import tempfile
+
+    session_file = session_path / "session.json"
+    dir_path = session_file.parent
+
+    try:
+        # Write to temp file in same directory (atomic rename requires same filesystem)
+        with tempfile.NamedTemporaryFile(
+            mode='w',
+            dir=dir_path,
+            delete=False,
+            encoding='utf-8',
+            suffix='.tmp'
+        ) as tf:
+            json.dump(data, tf, indent=2, ensure_ascii=False)
+            temp_name = tf.name
+
+        # Atomic rename (POSIX guarantees atomicity)
+        os.replace(temp_name, session_file)
+    except Exception as e:
+        # Clean up temp file if rename failed
+        if 'temp_name' in locals() and Path(temp_name).exists():
+            Path(temp_name).unlink()
+        raise ValueError(f"Failed to write session.json atomically: {e}") from e
 
 
 def _save_session_data(name: str, data: Dict[str, Any]) -> None:
-    """Save session.json data.
+    """Save session.json data atomically.
 
     Args:
         name: Session name
         data: Session data to save
     """
     session_path = _get_session_path(name)
-    session_file = session_path / "session.json"
-
-    with open(session_file, 'w') as f:
-        json.dump(data, f, indent=2, ensure_ascii=False)
+    _atomic_write_session_json(session_path, data)
 
 
 def _get_active_session() -> Optional[Dict[str, Any]]:
@@ -375,16 +410,37 @@ def _add_cow_file(session_name: str, file_path: str, change_type: str) -> None:
         change_type: "modified" | "created" | "deleted"
     """
     session_data = _load_session_data(session_name)
+    session_path = _get_session_path(session_name)
 
     # Check if already tracked
-    existing_paths = [f["path"] for f in session_data["cow_files"]]
-    if file_path in existing_paths:
-        return  # Already tracked
+    existing_entry = None
+    for cow_file in session_data["cow_files"]:
+        if cow_file["path"] == file_path:
+            existing_entry = cow_file
+            break
 
-    # Get file size
-    size_bytes = 0
-    if os.path.exists(file_path):
-        size_bytes = os.path.getsize(file_path)
+    if existing_entry:
+        # Update change_type if status changed (Comment 2: bug_risk fix)
+        old_type = existing_entry["type"]
+        if old_type != change_type:
+            # Remove from old change list
+            if file_path in session_data["changes"][old_type]:
+                session_data["changes"][old_type].remove(file_path)
+
+            # Add to new change list
+            if file_path not in session_data["changes"][change_type]:
+                session_data["changes"][change_type].append(file_path)
+
+            # Update type in cow_files
+            existing_entry["type"] = change_type
+            existing_entry["updated_at"] = datetime.now(timezone.utc).isoformat()
+
+            _save_session_data(session_name, session_data)
+        return
+
+    # Get file size from session directory (Comment 1: explicit session path)
+    session_file = session_path / file_path
+    size_bytes = os.path.getsize(session_file) if session_file.exists() else 0
 
     # Add to cow_files
     cow_entry = {
@@ -478,13 +534,14 @@ async def get_active_session() -> str:
         f"   • Acts: {session['acts_path']}/",
     ]
 
-    # Human retries
-    retries = data.get("human_retries", [])
-    if retries:
-        lines.append("")
-        lines.append(f"🔄 **Human Retries**: {len(retries)}")
-        for retry in retries[-3:]:  # Show last 3
-            lines.append(f"   • {retry['file']}: Retry #{retry['retry_number']} - {retry['reason'][:50]}...")
+    # Human retries (Comment 11: use named expression + list extend)
+    if retries := data.get("human_retries", []):
+        lines.extend([
+            "",
+            f"🔄 **Human Retries**: {len(retries)}",
+            *[f"   • {retry['file']}: Retry #{retry['retry_number']} - {retry['reason'][:50]}..."
+              for retry in retries[-3:]]  # Show last 3
+        ])
 
     return "\n".join(lines)
 
@@ -793,22 +850,20 @@ No sessions found.
     lines.append("")
 
     if active_name:
-        lines.append(f"🔒 Active: {active_name}")
-        lines.append("")
+        lines.extend([f"🔒 Active: {active_name}", ""])
 
-    # Show crashed sessions if any
-    crashed = [s for s in sessions if s["status"] == SessionStatus.CRASHED.value]
-    if crashed:
+    # Show crashed sessions if any (Comment 12: merge list appends)
+    if crashed := [s for s in sessions if s["status"] == SessionStatus.CRASHED.value]:
         lines.append(f"⚠️ Crashed sessions ({len(crashed)}):")
-        for s in crashed:
-            lines.append(f"   • {s['name']}")
-            lines.append("     Action required: /session cancel <name>")
+        lines.extend([f"   • {s['name']}\n     Action required: /session cancel <name>" for s in crashed])
         lines.append("")
 
-    lines.append("💡 Commands:")
-    lines.append("   - Switch: /session switch <name>")
-    lines.append("   - Commit: /session commit")
-    lines.append("   - Cancel: /session cancel")
+    lines.extend([
+        "💡 Commands:",
+        "   - Switch: /session switch <name>",
+        "   - Commit: /session commit",
+        "   - Cancel: /session cancel"
+    ])
 
     return "\n".join(lines)
 
@@ -867,31 +922,33 @@ Error: {str(e)}
     # Update session.lock
     _update_session_lock(session_name)
 
-    # Format response
+    # Format response (Comment 13: merge list appends)
     lines = ["🔄 SWITCHED SESSION", ""]
 
     if prev_name:
         lines.append(f"From: {prev_name}")
 
-    lines.append(f"To:   {session_name}")
-    lines.append("")
-    lines.append("📂 Active Session Directory:")
-    lines.append(f"   {session_path}/")
-    lines.append("")
+    lines.extend([
+        f"To:   {session_name}",
+        "",
+        "📂 Active Session Directory:",
+        f"   {session_path}/",
+        ""
+    ])
 
     # Show session stats
     stats = session_data.get("stats", {})
-    lines.append("📊 Progress:")
-    lines.append(f"   • Modified files: {len(session_data['changes']['modified'])}")
-    lines.append(f"   • Created files: {len(session_data['changes']['created'])}")
-    lines.append(f"   • Session size: {_format_file_size(stats.get('session_size_bytes', 0))}")
+    lines.extend([
+        "📊 Progress:",
+        f"   • Modified files: {len(session_data['changes']['modified'])}",
+        f"   • Created files: {len(session_data['changes']['created'])}",
+        f"   • Session size: {_format_file_size(stats.get('session_size_bytes', 0))}"
+    ])
 
-    retries = len(session_data.get("human_retries", []))
-    if retries > 0:
+    if retries := len(session_data.get("human_retries", [])):
         lines.append(f"   • Human retries: {retries}")
 
-    lines.append("")
-    lines.append("💡 Resume work or commit when ready")
+    lines.extend(["", "💡 Resume work or commit when ready"])
 
     return "\n".join(lines)
 
@@ -990,13 +1047,31 @@ Session '{session_name}' has no modified files.
     # Commit: Copy CoW files from session to global
     copied_files = []
     failed_files = []
+    deleted_files = []
+    archived_files = []
 
     for cow_file in session_data["cow_files"]:
         file_path = cow_file["path"]
+        file_type = cow_file.get("type", "modified")
         session_file = session_path / file_path
         global_file = Path(file_path)
 
         try:
+            # Handle deleted files (Comment 4: archive before deleting)
+            if file_type == "deleted":
+                # Archive before deleting
+                timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+                archive_dir = WORKSPACE_PATH / "deleted-archive" / session_name / timestamp
+                archive_file = archive_dir / file_path
+                archive_file.parent.mkdir(parents=True, exist_ok=True)
+
+                if global_file.exists():
+                    shutil.copy2(global_file, archive_file)
+                    archived_files.append(file_path)
+                    global_file.unlink()
+                    deleted_files.append(file_path)
+                continue
+
             # Create parent directory if needed
             global_file.parent.mkdir(parents=True, exist_ok=True)
 
@@ -1018,8 +1093,12 @@ Session '{session_name}' has no modified files.
             shutil.copytree(retries_dir, archive_dir, dirs_exist_ok=True)
             retries_archived = True
 
-    # Clean up session directory
-    shutil.rmtree(session_path)
+    # Clean up session directory (Comment 5: error handling)
+    try:
+        shutil.rmtree(session_path)
+    except Exception as e:
+        # Log error but don't fail commit - session data already copied
+        failed_files.append((f"session directory cleanup: {session_path}", str(e)))
 
     # Clear session.lock if this was active session
     lock = _get_session_lock()
@@ -1042,6 +1121,20 @@ Session '{session_name}' has no modified files.
             lines.append(f"   ... and {len(copied_files) - 10} more")
     else:
         lines.append("   (none)")
+
+    if deleted_files:
+        lines.append("")
+        lines.append("🗑️ Files deleted from global:")
+        for f in deleted_files[:10]:
+            lines.append(f"   ✓ {f}")
+        if len(deleted_files) > 10:
+            lines.append(f"   ... and {len(deleted_files) - 10} more")
+
+    if archived_files:
+        lines.append("")
+        lines.append("📦 Deleted files archived:")
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+        lines.append(f"   {WORKSPACE_PATH}/deleted-archive/{session_name}/{timestamp}/")
 
     if failed_files:
         lines.append("")
@@ -1143,15 +1236,20 @@ async def cancel_session(params: CancelSessionInput) -> str:
         ""
     ]
 
+    # Comment 15: merge list appends
     if retries_backed_up:
-        lines.append("📦 Human retries backed up:")
-        lines.append(f"   {backup_dir}/")
-        lines.append("")
+        lines.extend([
+            "📦 Human retries backed up:",
+            f"   {backup_dir}/",
+            ""
+        ])
 
-    lines.append("🗑️ Session directory removed")
-    lines.append("🔓 Session lock cleared")
-    lines.append("")
-    lines.append("💡 Global files (context/, acts/) unchanged")
+    lines.extend([
+        "🗑️ Session directory removed",
+        "🔓 Session lock cleared",
+        "",
+        "💡 Global files (context/, acts/) unchanged"
+    ])
 
     return "\n".join(lines)
 

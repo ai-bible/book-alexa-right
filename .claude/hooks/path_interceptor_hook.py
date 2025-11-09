@@ -82,8 +82,9 @@ def main():
         session_file = session_path / file_path
         global_file = Path(file_path)
 
-        if session_file.exists():
-            # File exists in session (modified via CoW)
+        # Comment 7: Clarify when both files exist (session takes precedence)
+        if session_file.exists() and global_file.exists():
+            # File exists in both locations - session file takes precedence
             print(
                 f"\n💡 [CoW Active] Reading from session: {file_path}",
                 file=sys.stderr
@@ -93,7 +94,25 @@ def main():
                 file=sys.stderr
             )
             print(
-                f"   Status: Modified in session (CoW copy)",
+                "   Status: Modified in session (CoW copy)",
+                file=sys.stderr
+            )
+            print(
+                "   Note: Global file is shadowed - session version takes precedence",
+                file=sys.stderr
+            )
+        elif session_file.exists():
+            # File exists only in session (modified via CoW)
+            print(
+                f"\n💡 [CoW Active] Reading from session: {file_path}",
+                file=sys.stderr
+            )
+            print(
+                f"   Source: workspace/sessions/{session_name}/{file_path}",
+                file=sys.stderr
+            )
+            print(
+                "   Status: Modified in session (CoW copy)",
                 file=sys.stderr
             )
         elif global_file.exists():
@@ -107,27 +126,27 @@ def main():
                 file=sys.stderr
             )
             print(
-                f"   Status: Not yet modified in session",
+                "   Status: Not yet modified in session",
                 file=sys.stderr
             )
 
             # If this is a Write operation, CoW will trigger
             if tool_name in ["Write", "Edit"]:
                 print(
-                    f"   ⚡ CoW will trigger: File will be copied to session on write",
+                    "   ⚡ CoW will trigger: File will be copied to session on write",
                     file=sys.stderr
                 )
-        else:
+        # Comment 8: merge else-if into elif
+        elif tool_name in ["Write", "Edit"]:
             # New file (doesn't exist anywhere)
-            if tool_name in ["Write", "Edit"]:
-                print(
-                    f"\n✨ [New File] Creating in session: {file_path}",
-                    file=sys.stderr
-                )
-                print(
-                    f"   Destination: workspace/sessions/{session_name}/{file_path}",
-                    file=sys.stderr
-                )
+            print(
+                f"\n✨ [New File] Creating in session: {file_path}",
+                file=sys.stderr
+            )
+            print(
+                f"   Destination: workspace/sessions/{session_name}/{file_path}",
+                file=sys.stderr
+            )
 
         # Always exit successfully (non-blocking)
         sys.exit(0)
