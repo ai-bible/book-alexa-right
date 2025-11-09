@@ -715,9 +715,9 @@ workspace/
 - File write: Copy from global on first write (CoW trigger)
 - Commit: Copy only CoW files to global
 
-#### ✅ DONE: Phase 2 - Slash Commands (100%)
+#### ✅ DONE: Phase 2 - Skills (100%)
 
-**File**: `.claude/commands/session.md`
+**File**: `.claude/skills/session.md`
 
 **Commands Implemented**:
 ```bash
@@ -729,6 +729,11 @@ workspace/
 /session cancel [name]               # Discard changes, rollback
 /retry <file> <reason>               # Record human retry
 ```
+
+**Architecture**: Hybrid (Skill + MCP Server)
+- Skill provides user-friendly command interface
+- MCP server provides backend logic and state management
+- Following Anthropic best practices for Skills structure
 
 #### ⏳ TODO: Phase 3 - Hooks (0%)
 
