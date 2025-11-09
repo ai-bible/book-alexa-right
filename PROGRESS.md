@@ -735,23 +735,39 @@ workspace/
 - MCP server provides backend logic and state management
 - Following Anthropic best practices for Skills structure
 
-#### ⏳ TODO: Phase 3 - Hooks (0%)
+#### ✅ DONE: Phase 3 - Hooks (100%)
 
-**Files to Create**:
-1. ⏳ `.claude/hooks/session_guard_hook.py` (PreToolUse)
-   - Block operations if no active session
-   - Detect crashed sessions (stale lock)
-   - Require user action for crashed sessions
+**Files Created**:
+1. ✅ `.claude/hooks/session_guard_hook.py` (PreToolUse)
+   - Blocks Write/Edit operations if no active session
+   - Detects crashed sessions (stale lock, dead process)
+   - Marks crashed sessions in session.json
+   - Provides actionable error messages
+   - Graceful degradation: errors logged, never breaks workflow
 
-2. ⏳ `.claude/hooks/path_interceptor_hook.py` (PostToolUse)
-   - Guide AI to use correct paths (session vs global)
-   - Show CoW status in responses
+2. ✅ `.claude/hooks/path_interceptor_hook.py` (PostToolUse)
+   - Shows AI path resolution (session vs global)
+   - Displays CoW status for transparency
+   - Indicates when CoW will trigger on write
+   - Non-blocking observability only
 
-3. ⏳ `.claude/hooks/session_summary_hook.py` (Stop)
-   - Show active session on conversation end
-   - Remind to commit/cancel
+3. ✅ `.claude/hooks/session_summary_hook.py` (Stop)
+   - Shows active session summary on conversation end
+   - Displays uncommitted changes count
+   - Lists human retries (last 2)
+   - Reminds user to commit/cancel
 
-**Estimated Effort**: 2-3 hours
+**Integration**:
+- ✅ Added all 3 hooks to `.claude/hooks.json`
+- ✅ Made hooks executable (chmod +x)
+- ✅ Integrated with existing hooks (state_tracking, workflow_checkpoint)
+
+**Architecture Principles Applied** (from agent-architect.md):
+- Single Responsibility: Each hook does one thing
+- Graceful Degradation: Errors logged, never block workflow
+- Minimal Context: Hooks receive only necessary event data
+- Clear Error Messages: Actionable suggestions for users
+- Fast Execution: Simple logic, no heavy processing
 
 #### ⏳ TODO: Phase 4 - Integration with Workflow System (0%)
 
@@ -846,20 +862,20 @@ list_sessions() -> str  # Markdown table
 | Phase | Component | Status | Progress |
 |-------|-----------|--------|----------|
 | 1 | MCP Server | ✅ DONE | 100% |
-| 2 | Slash Commands | ✅ DONE | 100% |
-| 3 | Hooks | ⏳ TODO | 0% |
+| 2 | Skills | ✅ DONE | 100% |
+| 3 | Hooks | ✅ DONE | 100% |
 | 4 | Workflow Integration | ⏳ TODO | 0% |
 | 5 | Testing | ⏳ TODO | 0% |
 
-**Overall Progress**: 70% complete (Core functionality done)
+**Overall Progress**: 85% complete (Core + Protection layers done)
 
-**Estimated Remaining Effort**: 9-13 hours
+**Estimated Remaining Effort**: 7-10 hours
 
 ### Next Steps
 
-1. **Immediate**: Create session guard hooks (Phase 3)
-2. **High Priority**: Integrate with workflow orchestration (Phase 4)
-3. **Medium Priority**: Add comprehensive tests (Phase 5)
+1. **Immediate**: Integrate with workflow orchestration (Phase 4)
+2. **High Priority**: Add comprehensive tests (Phase 5)
+3. **Optional**: Enhance with additional features
 
 ---
 
