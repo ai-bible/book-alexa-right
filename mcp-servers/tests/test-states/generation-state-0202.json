@@ -1,0 +1,109 @@
+{
+  "scene_id": "0202",
+  "session_id": "2025-11-02-143045-scene-0202",
+  "started_at": "2025-11-02T14:30:45Z",
+  "updated_at": "2025-11-02T14:41:52Z",
+  "current_phase": "FAILED",
+  "current_step": 4,
+  "workflow_status": "FAILED",
+
+  "steps": {
+    "step_1_file_check": {
+      "status": "COMPLETED",
+      "started_at": "2025-11-02T14:30:45Z",
+      "completed_at": "2025-11-02T14:30:46Z",
+      "duration_seconds": 1,
+      "agent_used": "generation-coordinator"
+    },
+    "step_2_blueprint_validation": {
+      "status": "COMPLETED",
+      "started_at": "2025-11-02T14:30:46Z",
+      "completed_at": "2025-11-02T14:31:05Z",
+      "duration_seconds": 19,
+      "agent_used": "blueprint-validator"
+    },
+    "step_3_verification_plan": {
+      "status": "COMPLETED",
+      "started_at": "2025-11-02T14:31:05Z",
+      "completed_at": "2025-11-02T14:31:17Z",
+      "duration_seconds": 12,
+      "agent_used": "verification-planner"
+    },
+    "step_4_generation": {
+      "status": "FAILED",
+      "started_at": "2025-11-02T14:31:17Z",
+      "completed_at": "2025-11-02T14:41:52Z",
+      "duration_seconds": 635,
+      "agent_used": "prose-writer"
+    }
+  },
+
+  "generation_attempts": {
+    "current_attempt": 3,
+    "max_attempts": 3,
+    "attempts_history": [
+      {
+        "attempt": 1,
+        "started_at": "2025-11-02T14:31:17Z",
+        "completed_at": "2025-11-02T14:34:33Z",
+        "status": "FAILED",
+        "error": "Location constraint violated"
+      },
+      {
+        "attempt": 2,
+        "started_at": "2025-11-02T14:34:34Z",
+        "completed_at": "2025-11-02T14:37:47Z",
+        "status": "FAILED",
+        "error": "Location constraint violated"
+      },
+      {
+        "attempt": 3,
+        "started_at": "2025-11-02T14:37:48Z",
+        "completed_at": "2025-11-02T14:41:52Z",
+        "status": "FAILED",
+        "error": "Location constraint violated - max attempts reached"
+      }
+    ]
+  },
+
+  "artifacts": {
+    "blueprint_path": "acts/act-1/chapters/chapter-02/scenes/scene-0202-blueprint.md",
+    "constraints_list_path": "workspace/artifacts/scene-0202-constraints.json",
+    "verified_plan_path": "workspace/artifacts/scene-0202-verified-plan.json",
+    "draft_path": "workspace/artifacts/scene-0202-draft-attempt-3.md"
+  },
+
+  "user_interactions": [
+    {
+      "step": 3,
+      "timestamp": "2025-11-02T14:31:12Z",
+      "action": "APPROVED",
+      "message": "User approved verification plan"
+    }
+  ],
+
+  "errors": [
+    {
+      "step": 4,
+      "timestamp": "2025-11-02T14:34:33Z",
+      "message": "Location constraint violated: Found 'больница', required 'Башня Книжников'",
+      "attempt": 1
+    },
+    {
+      "step": 4,
+      "timestamp": "2025-11-02T14:37:47Z",
+      "message": "Location constraint violated: Found 'больница', required 'Башня Книжников'",
+      "attempt": 2
+    },
+    {
+      "step": 4,
+      "timestamp": "2025-11-02T14:41:52Z",
+      "message": "Location constraint violated: Found 'больница', required 'Башня Книжников' - max attempts reached (3/3)",
+      "attempt": 3
+    }
+  ],
+
+  "metadata": {
+    "total_duration_seconds": 667
+  }
+}

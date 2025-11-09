@@ -1,0 +1,136 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<evaluation>
+  <meta>
+    <name>Generation State Tracker MCP Server Evaluation</name>
+    <version>1.0.0</version>
+    <description>
+      Evaluation scenarios for generation-state-tracker MCP server.
+      Tests reading and analyzing scene generation workflow states.
+      All questions are read-only and use pre-created test state files.
+    </description>
+    <test_data_location>mcp-servers/tests/test-states/</test_data_location>
+    <setup_instructions>
+      Before running evaluation:
+      1. Copy test state files to workspace/:
+         cp mcp-servers/tests/test-states/*.json workspace/
+      2. Ensure MCP server is configured and running
+      3. All questions use get_generation_status and list_generations tools only
+    </setup_instructions>
+  </meta>
+
+  <qa_pair>
+    <question>What is the current workflow status of scene 0202, and at which step did it fail?</question>
+    <answer>FAILED, Step 4</answer>
+    <rationale>
+      Tests basic status retrieval. Scene 0202 has workflow_status="FAILED" and current_step=4.
+      Requires: get_generation_status(scene_id="0202")
+    </rationale>
+  </qa_pair>
+
+  <qa_pair>
+    <question>How many generation attempts were made for scene 0202 before it failed, and what was the maximum allowed?</question>
+    <answer>3 attempts, 3 maximum</answer>
+    <rationale>
+      Tests reading generation_attempts field.
+      Scene 0202: current_attempt=3, max_attempts=3.
+      Requires: get_generation_status(scene_id="0202", detailed=True)
+    </rationale>
+  </qa_pair>
+
+  <qa_pair>
+    <question>What specific error message was recorded for scene 0202 on attempt 3?</question>
+    <answer>Location constraint violated: Found 'больница', required 'Башня Книжников' - max attempts reached (3/3)</answer>
+    <rationale>
+      Tests error message extraction from errors array.
+      Requires: get_generation_status(scene_id="0202", detailed=True) and parsing errors field.
+    </rationale>
+  </qa_pair>
+
+  <qa_pair>
+    <question>For scene 0101 which completed successfully, what was the total duration in minutes from start to finish?</question>
+    <answer>6 minutes and 42 seconds</answer>
+    <rationale>
+      Tests duration calculation. Scene 0101 metadata.total_duration_seconds = 402 seconds = 6m 42s.
+      Requires: get_generation_status(scene_id="0101", detailed=True) and parsing metadata.
+    </rationale>
+  </qa_pair>
+
+  <qa_pair>
+    <question>Which step took the longest time for scene 0101, and how long did it take in seconds?</question>
+    <answer>Step 4 (Generation), 196 seconds</answer>
+    <rationale>
+      Tests step duration comparison. Scene 0101 step_4_generation.duration_seconds = 196 (longest).
+      Requires: get_generation_status(scene_id="0101", detailed=True) and comparing all step durations.
+    </rationale>
+  </qa_pair>
+
+  <qa_pair>
+    <question>For scene 0303 currently in progress, how many steps have been completed, and which step is currently running?</question>
+    <answer>3 completed, Step 4 running</answer>
+    <rationale>
+      Tests IN_PROGRESS status handling. Scene 0303: steps 1-3 COMPLETED, step 4 IN_PROGRESS.
+      Requires: get_generation_status(scene_id="0303", detailed=True).
+    </rationale>
+  </qa_pair>
+
+  <qa_pair>
+    <question>If we were to resume scene 0202 after fixing the blueprint, how many seconds would be saved by skipping already completed steps 1-3?</question>
+    <answer>32 seconds</answer>
+    <rationale>
+      Tests resume time calculation. Scene 0202: step_1 (1s) + step_2 (19s) + step_3 (12s) = 32s saved.
+      Requires: get_generation_status(scene_id="0202", detailed=True) and summing completed step durations.
+    </rationale>
+  </qa_pair>
+
+  <qa_pair>
+    <question>Comparing scenes 0101 and 0202, which one took longer for Step 2 (Blueprint Validation), and by how many seconds?</question>
+    <answer>Same duration, both took 19 seconds</answer>
+    <rationale>
+      Tests cross-scene comparison. Both 0101 and 0202 have step_2.duration_seconds = 19.
+      Requires: get_generation_status for both scenes, comparing step_2 durations.
+    </rationale>
+  </qa_pair>
+
+  <qa_pair>
+    <question>For scene 0303 on its first failed attempt, what was the specific reason for failure?</question>
+    <answer>Word count too low (850 words, required 1000-1100)</answer>
+    <rationale>
+      Tests reading attempt history errors. Scene 0303 attempts_history[0].error contains word count message.
+      Requires: get_generation_status(scene_id="0303", detailed=True) and parsing attempts_history.
+    </rationale>
+  </qa_pair>
+
+  <qa_pair>
+    <question>Using list_generations tool to check all test scenes, how many scenes have workflow_status of FAILED?</question>
+    <answer>1</answer>
+    <rationale>
+      Tests list_generations filtering. Only scene 0202 has status FAILED (0101=COMPLETED, 0303=IN_PROGRESS).
+      Requires: list_generations(filter="failed") and counting results.
+    </rationale>
+  </qa_pair>
+
+  <setup>
+    <pre_test>
+      <!-- Copy test state files to workspace -->
+      <command>cp mcp-servers/tests/test-states/generation-state-0101.json workspace/</command>
+      <command>cp mcp-servers/tests/test-states/generation-state-0202.json workspace/</command>
+      <command>cp mcp-servers/tests/test-states/generation-state-0303.json workspace/</command>
+    </pre_test>
+
+    <post_test>
+      <!-- Clean up test state files -->
+      <command>rm workspace/generation-state-0101.json</command>
+      <command>rm workspace/generation-state-0202.json</command>
+      <command>rm workspace/generation-state-0303.json</command>
+    </post_test>
+  </setup>
+
+  <notes>
+    <note>All questions require only READ-ONLY operations (get_generation_status, list_generations)</note>
+    <note>Questions test different aspects: status reading, duration calculation, error handling, cross-scene comparison</note>
+    <note>Answers are stable (won't change) as they depend on static test state files</note>
+    <note>Each question is independent and can be verified by string comparison</note>
+    <note>Questions are realistic - represent actual use cases for MCP server</note>
+    <note>Setup/teardown ensures test isolation</note>
+  </notes>
+</evaluation>

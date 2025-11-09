@@ -1,0 +1,97 @@
+{
+  "scene_id": "0101",
+  "session_id": "2025-11-01-093045-scene-0101",
+  "started_at": "2025-11-01T09:30:45Z",
+  "updated_at": "2025-11-01T09:37:27Z",
+  "current_phase": "COMPLETED",
+  "current_step": 7,
+  "workflow_status": "COMPLETED",
+
+  "steps": {
+    "step_1_file_check": {
+      "status": "COMPLETED",
+      "started_at": "2025-11-01T09:30:45Z",
+      "completed_at": "2025-11-01T09:30:46Z",
+      "duration_seconds": 1,
+      "agent_used": "generation-coordinator"
+    },
+    "step_2_blueprint_validation": {
+      "status": "COMPLETED",
+      "started_at": "2025-11-01T09:30:46Z",
+      "completed_at": "2025-11-01T09:31:05Z",
+      "duration_seconds": 19,
+      "agent_used": "blueprint-validator"
+    },
+    "step_3_verification_plan": {
+      "status": "COMPLETED",
+      "started_at": "2025-11-01T09:31:05Z",
+      "completed_at": "2025-11-01T09:31:17Z",
+      "duration_seconds": 12,
+      "agent_used": "verification-planner"
+    },
+    "step_4_generation": {
+      "status": "COMPLETED",
+      "started_at": "2025-11-01T09:31:17Z",
+      "completed_at": "2025-11-01T09:34:33Z",
+      "duration_seconds": 196,
+      "agent_used": "prose-writer"
+    },
+    "step_5_fast_compliance": {
+      "status": "COMPLETED",
+      "started_at": "2025-11-01T09:34:33Z",
+      "completed_at": "2025-11-01T09:34:58Z",
+      "duration_seconds": 25,
+      "agent_used": "fast-checker"
+    },
+    "step_6_full_validation": {
+      "status": "COMPLETED",
+      "started_at": "2025-11-01T09:34:58Z",
+      "completed_at": "2025-11-01T09:36:32Z",
+      "duration_seconds": 94,
+      "agent_used": "validation-aggregator"
+    },
+    "step_7_final_output": {
+      "status": "COMPLETED",
+      "started_at": "2025-11-01T09:36:32Z",
+      "completed_at": "2025-11-01T09:37:27Z",
+      "duration_seconds": 55,
+      "agent_used": "generation-coordinator"
+    }
+  },
+
+  "generation_attempts": {
+    "current_attempt": 1,
+    "max_attempts": 3,
+    "attempts_history": [
+      {
+        "attempt": 1,
+        "started_at": "2025-11-01T09:31:17Z",
+        "completed_at": "2025-11-01T09:34:33Z",
+        "status": "SUCCESS"
+      }
+    ]
+  },
+
+  "artifacts": {
+    "blueprint_path": "acts/act-1/chapters/chapter-01/scenes/scene-0101-blueprint.md",
+    "constraints_list_path": "workspace/artifacts/scene-0101-constraints.json",
+    "verified_plan_path": "workspace/artifacts/scene-0101-verified-plan.json",
+    "draft_path": "workspace/artifacts/scene-0101-draft.md",
+    "final_scene_path": "acts/act-1/chapters/chapter-01/content/scene-0101.md"
+  },
+
+  "user_interactions": [
+    {
+      "step": 3,
+      "timestamp": "2025-11-01T09:31:12Z",
+      "action": "APPROVED",
+      "message": "User approved verification plan"
+    }
+  ],
+
+  "errors": [],
+
+  "metadata": {
+    "total_duration_seconds": 402
+  }
+}

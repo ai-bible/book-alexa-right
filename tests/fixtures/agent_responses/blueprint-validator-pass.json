@@ -1,0 +1,46 @@
+{
+  "status": "PASS",
+  "blueprint_path": "tests/fixtures/blueprints/scene-9999-blueprint.md",
+  "validated_at": "2025-11-03T14:30:00Z",
+  "constraints": {
+    "location": {
+      "required": "Башня Книжников, медпалата",
+      "forbidden": ["больница", "клиника"],
+      "atmosphere": "Тихая, наполненная хрономатериалами, слегка жутковатая"
+    },
+    "characters": {
+      "present": ["Алекса Райт", "Реджинальд Хавенфорд"],
+      "absent": ["Себастьян Грей"],
+      "pov": "Алекса Райт"
+    },
+    "time": {
+      "duration_minutes": "10-15",
+      "flow": "линейный"
+    },
+    "style": {
+      "tone": "Напряженный, слегка мистический",
+      "pov_type": "Третье лицо, ограниченная перспектива Алексы",
+      "sensory_focus": ["визуальные описания", "тактильные ощущения"]
+    },
+    "word_count": {
+      "min": 800,
+      "max": 1200,
+      "target": 1000
+    },
+    "canon_level": 2
+  },
+  "validation_checks": {
+    "structure_complete": true,
+    "constraints_defined": true,
+    "characters_specified": true,
+    "location_clear": true,
+    "no_contradictions": true
+  },
+  "issues": [],
+  "warnings": [],
+  "recommendations": [
+    "Blueprint is well-structured and ready for generation",
+    "All constraints are clearly defined",
+    "No conflicts with existing canon detected"
+  ]
+}

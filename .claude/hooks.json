@@ -1,0 +1,28 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python .claude/hooks/state_tracking_hook.py",
+            "description": "Track MCP state updates after tool calls"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python .claude/hooks/workflow_checkpoint_hook.py",
+            "description": "Validate workflow state on conversation stop"
+          }
+        ]
+      }
+    ]
+  }
+}

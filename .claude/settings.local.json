@@ -1,0 +1,33 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(if exist \"chapters\\chapter-01-plan.md\" move \"chapters\\chapter-01-plan.md\" \"chapters\\chapter-01\\plan.md\")",
+      "Bash(if exist \"chapters\\chapter-02-plan.md\" move \"chapters\\chapter-02-plan.md\" \"chapters\\chapter-02\\plan.md\")",
+      "Bash(if exist \"chapters\\chapter-03-plan.md\" move \"chapters\\chapter-03-plan.md\" \"chapters\\chapter-03\\plan.md\")",
+      "Bash(if exist \"chapters\\chapter-04-plan.md\" move \"chapters\\chapter-04-plan.md\" \"chapters\\chapter-04\\plan.md\")",
+      "Bash(for chapter in chapter-01 chapter-02 chapter-03 chapter-04)",
+      "Bash(do mkdir -p \"$chapter/scenes\" \"$chapter/content\")",
+      "Bash(done)",
+      "Bash(mv:*)",
+      "Bash(do echo \"=== $chapter ===\")",
+      "Bash(ls:*)",
+      "Bash(mkdir:*)",
+      "Bash(dir:*)",
+      "Bash(copy:*)",
+      "Bash(awk:*)",
+      "Bash(if exist \"workspace\\logs\" dir workspacelogs /O-D /B)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(python -m py_compile:*)",
+      "WebSearch",
+      "Skill(mcp-builder)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:www.eesel.ai)"
+    ],
+    "deny": [],
+    "ask": []
+  },
+  "disabledMcpjsonServers": [
+    "ai-book-state-tracker"
+  ],
+  "outputStyle": "Basic Learning"
+}

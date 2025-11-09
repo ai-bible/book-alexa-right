@@ -1,0 +1,374 @@
+"""
+Test Reporter - Generate detailed test reports
+
+Provides utilities for generating detailed test reports with MCP call sequences,
+state diffs, and artifact preservation.
+"""
+
+from typing import List, Dict, Any, Optional
+from pathlib import Path
+from datetime import datetime
+import json
+
+
+class TestReporter:
+    """
+    Generate detailed test reports.
+
+    Creates markdown reports with:
+    - Test execution summary
+    - MCP call sequence
+    - State transitions
+    - Artifacts created
+    - Error details (if failed)
+    """
+
+    def __init__(self, output_dir: Path = None):
+        """
+        Initialize test reporter.
+
+        Args:
+            output_dir: Directory for reports (default: tests/reports/)
+        """
+        self.output_dir = output_dir or Path("tests/reports")
+        self.output_dir.mkdir(parents=True, exist_ok=True)
+
+    def generate_report(
+        self,
+        test_name: str,
+        result,  # WorkflowResult
+        mcp_calls: List[Dict[str, Any]],
+        expected_state: Optional[Dict[str, Any]] = None,
+        actual_state: Optional[Dict[str, Any]] = None
+    ) -> str:
+        """
+        Create markdown test report.
+
+        Args:
+            test_name: Name of test
+            result: WorkflowResult instance
+            mcp_calls: List of MCP call records
+            expected_state: Expected state (for comparison)
+            actual_state: Actual state (for comparison)
+
+        Returns:
+            Markdown report content
+        """
+        lines = [
+            f"# Test Report: {test_name}",
+            "",
+            f"**Generated**: {datetime.now().isoformat()}",
+            f"**Scene ID**: {result.scene_id}",
+            "",
+            "---",
+            "",
+            "## Execution Summary",
+            "",
+            f"- **Status**: {self._format_status(result.status)}",
+            f"- **Duration**: {self._format_duration(result.duration_seconds)}",
+            f"- **Steps Completed**: {result.total_steps}/7",
+            f"- **Retry Count**: {result.retry_count}",
+            f"- **MCP Calls**: {result.mcp_calls_count}",
+            ""
+        ]
+
+        # Add failure details if failed
+        if result.status == "FAILED":
+            lines.extend([
+                "## ❌ Failure Details",
+                "",
+                f"- **Failed at Step**: {result.failed_step}",
+                f"- **Reason**: {result.failure_reason}",
+                ""
+            ])
+
+            if result.errors:
+                lines.append("### Errors Logged")
+                lines.append("")
+                for i, error in enumerate(result.errors, 1):
+                    lines.extend([
+                        f"#### Error {i}",
+                        f"- **Type**: {error.get('error_type', 'Unknown')}",
+                        f"- **Severity**: {error.get('severity', 'Unknown')}",
+                        f"- **Message**: {error.get('error_message', 'No message')}",
+                        ""
+                    ])
+
+        # MCP Call Sequence
+        lines.extend([
+            "## MCP Call Sequence",
+            "",
+            f"Total calls: {len(mcp_calls)}",
+            ""
+        ])
+
+        if mcp_calls:
+            lines.append("| # | Tool | Arguments |")
+            lines.append("|---|------|-----------|")
+
+            for i, call in enumerate(mcp_calls, 1):
+                tool_name = call.get("tool_name", "unknown")
+                args = call.get("arguments", {})
+                # Shorten args for display
+                args_str = self._format_args(args)
+                lines.append(f"| {i} | `{tool_name}` | {args_str} |")
+
+            lines.append("")
+        else:
+            lines.append("*No MCP calls recorded*")
+            lines.append("")
+
+        # State Comparison (if provided)
+        if expected_state and actual_state:
+            lines.extend([
+                "## State Comparison",
+                "",
+                "### Differences",
+                ""
+            ])
+
+            diffs = self._compare_states(expected_state, actual_state)
+            if diffs:
+                for diff in diffs:
+                    lines.append(f"- **{diff['field']}**:")
+                    lines.append(f"  - Expected: `{diff['expected']}`")
+                    lines.append(f"  - Actual: `{diff['actual']}`")
+                    lines.append("")
+            else:
+                lines.append("✅ No differences found")
+                lines.append("")
+
+        # Artifacts
+        if result.artifacts:
+            lines.extend([
+                "## Artifacts Created",
+                ""
+            ])
+
+            for name, path in result.artifacts.items():
+                lines.append(f"- **{name}**: `{path}`")
+
+            lines.append("")
+
+        lines.extend([
+            "---",
+            "",
+            "*Generated by FEAT-0003 Test Reporter*"
+        ])
+
+        return "\n".join(lines)
+
+    def save_report(
+        self,
+        test_name: str,
+        result,
+        mcp_calls: List[Dict[str, Any]],
+        **kwargs
+    ) -> Path:
+        """
+        Generate and save report to file.
+
+        Args:
+            test_name: Name of test
+            result: WorkflowResult
+            mcp_calls: MCP call records
+            **kwargs: Additional arguments for generate_report
+
+        Returns:
+            Path to saved report file
+        """
+        report_content = self.generate_report(
+            test_name, result, mcp_calls, **kwargs
+        )
+
+        # Create filename with timestamp
+        timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        filename = f"{test_name}-{timestamp}.md"
+        report_path = self.output_dir / filename
+
+        report_path.write_text(report_content, encoding='utf-8')
+
+        return report_path
+
+    def _format_status(self, status: str) -> str:
+        """Format status with emoji."""
+        status_map = {
+            "COMPLETED": "✅ COMPLETED",
+            "FAILED": "❌ FAILED",
+            "CANCELLED": "🚫 CANCELLED",
+            "IN_PROGRESS": "⏳ IN_PROGRESS"
+        }
+        return status_map.get(status, f"❓ {status}")
+
+    def _format_duration(self, seconds: float) -> str:
+        """Format duration in human-readable format."""
+        if seconds < 1:
+            return f"{seconds * 1000:.0f}ms"
+        elif seconds < 60:
+            return f"{seconds:.1f}s"
+        elif seconds < 3600:
+            minutes = int(seconds // 60)
+            secs = int(seconds % 60)
+            return f"{minutes}m {secs}s"
+        else:
+            hours = int(seconds // 3600)
+            minutes = int((seconds % 3600) // 60)
+            return f"{hours}h {minutes}m"
+
+    def _format_args(self, args: Dict[str, Any], max_length: int = 50) -> str:
+        """Format arguments for display."""
+        if not args:
+            return "-"
+
+        # Show key arguments only
+        key_fields = ["scene_id", "step_number", "duration_seconds", "status"]
+        relevant_args = {k: v for k, v in args.items() if k in key_fields}
+
+        if not relevant_args:
+            relevant_args = dict(list(args.items())[:2])  # First 2 args
+
+        args_str = ", ".join(f"{k}={v}" for k, v in relevant_args.items())
+
+        if len(args_str) > max_length:
+            args_str = args_str[:max_length - 3] + "..."
+
+        return args_str
+
+    def _compare_states(
+        self,
+        expected: Dict[str, Any],
+        actual: Dict[str, Any]
+    ) -> List[Dict[str, Any]]:
+        """
+        Compare two state dictionaries.
+
+        Args:
+            expected: Expected state
+            actual: Actual state
+
+        Returns:
+            List of differences
+        """
+        diffs = []
+
+        # Compare key fields
+        key_fields = [
+            "workflow_status",
+            "current_step",
+            "current_phase"
+        ]
+
+        for field in key_fields:
+            expected_val = expected.get(field)
+            actual_val = actual.get(field)
+
+            if expected_val != actual_val:
+                diffs.append({
+                    "field": field,
+                    "expected": expected_val,
+                    "actual": actual_val
+                })
+
+        return diffs
+
+
+def create_summary_report(
+    test_results: List[Dict[str, Any]],
+    output_path: Optional[Path] = None
+) -> str:
+    """
+    Create summary report for multiple tests.
+
+    Args:
+        test_results: List of test result dictionaries
+        output_path: Optional path to save report
+
+    Returns:
+        Markdown summary report
+    """
+    lines = [
+        "# Test Suite Summary",
+        "",
+        f"**Generated**: {datetime.now().isoformat()}",
+        "",
+        "---",
+        ""
+    ]
+
+    # Overall statistics
+    total_tests = len(test_results)
+    passed = sum(1 for r in test_results if r.get("status") == "passed")
+    failed = sum(1 for r in test_results if r.get("status") == "failed")
+    skipped = sum(1 for r in test_results if r.get("status") == "skipped")
+
+    lines.extend([
+        "## Overall Statistics",
+        "",
+        f"- **Total Tests**: {total_tests}",
+        f"- **Passed**: ✅ {passed}",
+        f"- **Failed**: ❌ {failed}",
+        f"- **Skipped**: ⏭️ {skipped}",
+        f"- **Pass Rate**: {(passed / total_tests * 100):.1f}%" if total_tests > 0 else "0%",
+        ""
+    ])
+
+    # Test breakdown
+    lines.extend([
+        "## Test Results",
+        "",
+        "| Test | Status | Duration |",
+        "|------|--------|----------|"
+    ])
+
+    for result in test_results:
+        name = result.get("name", "Unknown")
+        status = result.get("status", "unknown")
+        duration = result.get("duration", 0)
+
+        status_emoji = {
+            "passed": "✅",
+            "failed": "❌",
+            "skipped": "⏭️"
+        }.get(status, "❓")
+
+        duration_str = f"{duration:.2f}s" if duration < 60 else f"{duration / 60:.1f}m"
+
+        lines.append(f"| {name} | {status_emoji} {status} | {duration_str} |")
+
+    lines.append("")
+
+    # Failed tests details
+    failed_tests = [r for r in test_results if r.get("status") == "failed"]
+    if failed_tests:
+        lines.extend([
+            "## Failed Tests Details",
+            ""
+        ])
+
+        for result in failed_tests:
+            name = result.get("name", "Unknown")
+            error = result.get("error", "No error message")
+
+            lines.extend([
+                f"### {name}",
+                "",
+                f"```",
+                error,
+                f"```",
+                ""
+            ])
+
+    lines.extend([
+        "---",
+        "",
+        "*Generated by FEAT-0003 Test Suite*"
+    ])
+
+    report_content = "\n".join(lines)
+
+    # Save if path provided
+    if output_path:
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(report_content, encoding='utf-8')
+
+    return report_content

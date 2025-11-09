@@ -1,0 +1,325 @@
+{
+  "$schema": "https://modelcontextprotocol.io/schema/2025-06-18/mcp-server.json",
+  "name": "generation-state-tracker",
+  "version": "1.0.0",
+  "description": "MCP Server for FEAT-0001 scene generation workflow state tracking and management",
+  "author": "Book Writing AI System",
+
+  "server": {
+    "command": "node",
+    "args": ["mcp-servers/generation-state-tracker/index.js"],
+    "env": {
+      "WORKSPACE_PATH": "workspace/",
+      "STATE_FILE_PATTERN": "generation-state-*.json"
+    }
+  },
+
+  "resources": [
+    {
+      "uri": "state://generation/{scene_id}",
+      "name": "Generation Workflow State",
+      "description": "Current state of scene generation workflow for specified scene ID",
+      "mimeType": "application/json",
+      "auto_inject": "conditional",
+      "auto_inject_condition": {
+        "trigger_patterns": [
+          "generate scene {scene_id}",
+          "generation {scene_id}",
+          "сцена {scene_id}",
+          "сгенерируй сцену {scene_id}"
+        ],
+        "state_exists": true,
+        "state_status_in": ["IN_PROGRESS", "FAILED", "WAITING_USER_APPROVAL"]
+      },
+      "notes": "Auto-injects only if: (1) user mentions generation for this scene AND (2) state file exists AND (3) workflow is active/failed (not completed)"
+    },
+    {
+      "uri": "state://generation/all",
+      "name": "All Active Generations",
+      "description": "List of all active or failed generation workflows",
+      "mimeType": "application/json",
+      "auto_inject": "never"
+    }
+  ],
+
+  "tools": [
+    {
+      "name": "resume_generation",
+      "description": "Resume a failed or interrupted scene generation workflow from saved state",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "scene_id": {
+            "type": "string",
+            "description": "Scene ID to resume (e.g., '0204')",
+            "pattern": "^[0-9]{4}$"
+          },
+          "force": {
+            "type": "boolean",
+            "description": "Force resume even if state is old (>24h) or warnings present",
+            "default": false
+          }
+        },
+        "required": ["scene_id"]
+      },
+      "returns": {
+        "type": "object",
+        "properties": {
+          "success": {"type": "boolean"},
+          "message": {"type": "string"},
+          "resumed_from_step": {"type": "integer"},
+          "loaded_state": {
+            "type": "object",
+            "description": "Loaded state summary (steps completed, current step, etc.)"
+          }
+        }
+      },
+      "implementation": "Loads state.json, validates it, determines resume point, invokes generation-coordinator with resume flag and loaded state"
+    },
+    {
+      "name": "get_generation_status",
+      "description": "Get current status and progress of a scene generation workflow",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "scene_id": {
+            "type": "string",
+            "description": "Scene ID to check status (e.g., '0204')",
+            "pattern": "^[0-9]{4}$"
+          },
+          "detailed": {
+            "type": "boolean",
+            "description": "Return detailed status including all steps and timing",
+            "default": false
+          }
+        },
+        "required": ["scene_id"]
+      },
+      "returns": {
+        "type": "object",
+        "properties": {
+          "scene_id": {"type": "string"},
+          "status": {
+            "type": "string",
+            "enum": ["NOT_FOUND", "IN_PROGRESS", "WAITING_USER_APPROVAL", "COMPLETED", "FAILED"]
+          },
+          "current_step": {"type": "integer"},
+          "current_phase": {"type": "string"},
+          "elapsed_time": {"type": "string"},
+          "attempts": {"type": "integer"},
+          "steps_summary": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "step": {"type": "integer"},
+                "name": {"type": "string"},
+                "status": {"type": "string"},
+                "duration": {"type": "string"}
+              }
+            }
+          }
+        }
+      },
+      "implementation": "Reads state.json, formats human-readable status"
+    },
+    {
+      "name": "cancel_generation",
+      "description": "Cancel a running scene generation workflow",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "scene_id": {
+            "type": "string",
+            "description": "Scene ID to cancel (e.g., '0204')",
+            "pattern": "^[0-9]{4}$"
+          },
+          "reason": {
+            "type": "string",
+            "description": "Optional reason for cancellation"
+          }
+        },
+        "required": ["scene_id"]
+      },
+      "returns": {
+        "type": "object",
+        "properties": {
+          "success": {"type": "boolean"},
+          "message": {"type": "string"},
+          "cancelled_at_step": {"type": "integer"}
+        }
+      },
+      "implementation": "Updates state.json with status: CANCELLED, sends interrupt signal to coordinator if running"
+    },
+    {
+      "name": "list_generations",
+      "description": "List all scene generations with their current status",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "filter": {
+            "type": "string",
+            "enum": ["all", "active", "failed", "completed"],
+            "description": "Filter generations by status",
+            "default": "all"
+          },
+          "sort_by": {
+            "type": "string",
+            "enum": ["scene_id", "started_at", "status"],
+            "description": "Sort results by field",
+            "default": "started_at"
+          }
+        }
+      },
+      "returns": {
+        "type": "object",
+        "properties": {
+          "total": {"type": "integer"},
+          "generations": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "scene_id": {"type": "string"},
+                "session_id": {"type": "string"},
+                "status": {"type": "string"},
+                "current_step": {"type": "integer"},
+                "started_at": {"type": "string"},
+                "elapsed_time": {"type": "string"}
+              }
+            }
+          }
+        }
+      },
+      "implementation": "Scans workspace/ for all generation-state-*.json files, reads metadata, filters and sorts"
+    }
+  ],
+
+  "prompts": [
+    {
+      "name": "enforce_workflow_steps",
+      "description": "Ensures generation-coordinator follows all 7 steps without skipping",
+      "arguments": [
+        {
+          "name": "scene_id",
+          "description": "Scene ID being generated",
+          "required": true
+        },
+        {
+          "name": "current_step",
+          "description": "Current workflow step (1-7)",
+          "required": true
+        }
+      ],
+      "template": "You are generating scene {{scene_id}}. You are currently at Step {{current_step}}/7.\n\nBEFORE proceeding to the next step:\n1. Verify that Step {{current_step}} is COMPLETED\n2. Update state.json with completion status\n3. Check: Can you proceed to Step {{current_step + 1}}?\n   - If Step {{current_step}} failed → handle error\n   - If waiting for user → wait (do not skip)\n   - If completed → proceed\n\nNEVER skip steps. ALWAYS follow the sequence: 1→2→3→4→5→6→7."
+    },
+    {
+      "name": "state_recovery_guidance",
+      "description": "Guides coordinator on how to resume from saved state",
+      "arguments": [
+        {
+          "name": "scene_id",
+          "description": "Scene ID to resume",
+          "required": true
+        },
+        {
+          "name": "loaded_state",
+          "description": "Loaded state object (JSON)",
+          "required": true
+        }
+      ],
+      "template": "You are RESUMING generation for scene {{scene_id}} from saved state.\n\nState loaded:\n{{loaded_state | json_pretty}}\n\nYour instructions:\n1. Determine resume point:\n   - Find first step with status != 'COMPLETED'\n   - That is your starting point\n2. Re-read context:\n   - Blueprint (may have been updated)\n   - verified-plan.json (if Step 3 completed)\n   - constraints-list.json (if Step 2 completed)\n3. Do NOT repeat completed steps\n4. Display to user: 'Loaded state: Step 1-N completed, resuming from Step M'\n5. Continue workflow from Step M\n\nIf state is invalid or corrupted → ERROR and stop."
+    }
+  ],
+
+  "configuration": {
+    "state_file_location": "workspace/",
+    "state_file_naming": "generation-state-{scene_id}.json",
+    "auto_inject_enabled": true,
+    "auto_inject_mode": "conditional",
+    "retention_policy": {
+      "completed_states_ttl_days": 7,
+      "failed_states_ttl_days": null,
+      "auto_cleanup_enabled": true
+    },
+    "performance": {
+      "state_update_async": true,
+      "state_update_debounce_ms": 100,
+      "max_state_file_size_kb": 100
+    },
+    "logging": {
+      "log_state_updates": true,
+      "log_tool_invocations": true,
+      "log_auto_injections": true,
+      "log_file": "workspace/logs/mcp-generation-state-tracker.log"
+    }
+  },
+
+  "integration": {
+    "coordinator_agent": ".claude/agents/generation/generation-coordinator.md",
+    "coordinator_modifications_required": [
+      "Add state.json creation at workflow start (Step 1)",
+      "Add state.json update after each step completion",
+      "Add state.json read before proceeding to next step",
+      "Add resume logic: check if state exists, load and continue",
+      "Add progress logging with timestamps and durations"
+    ],
+    "skill_integration": {
+      "skill_name": "generation-state",
+      "skill_file": ".claude/skills/generation-state.md",
+      "skill_uses_mcp_tools": true,
+      "description": "Skill provides user-friendly commands that invoke MCP tools"
+    }
+  },
+
+  "testing": {
+    "test_scenarios": [
+      {
+        "name": "Auto-inject on generation request",
+        "steps": [
+          "User: 'Generate scene 0204'",
+          "Expected: MCP checks if state exists for 0204",
+          "Expected: If state exists and IN_PROGRESS → inject state into context",
+          "Expected: Coordinator sees state and continues from current step"
+        ]
+      },
+      {
+        "name": "Resume after failure",
+        "steps": [
+          "User: 'Resume generation 0205'",
+          "Expected: MCP tool resume_generation invoked",
+          "Expected: State loaded, validated",
+          "Expected: Coordinator continues from failed step",
+          "Expected: User sees: 'Loaded state: Step 1-3 completed, resuming from Step 4'"
+        ]
+      },
+      {
+        "name": "Status check during generation",
+        "steps": [
+          "User: 'Status generation 0204'",
+          "Expected: MCP tool get_generation_status invoked",
+          "Expected: Returns: 'Scene 0204: Step 4/7 (Generation), Attempt 2/3, elapsed 3m 45s'",
+          "Expected: User sees human-readable status"
+        ]
+      },
+      {
+        "name": "List all active generations",
+        "steps": [
+          "User: 'List all generations'",
+          "Expected: MCP tool list_generations invoked",
+          "Expected: Scans workspace/ for state files",
+          "Expected: Returns formatted list with scene IDs, status, progress"
+        ]
+      }
+    ]
+  },
+
+  "notes": [
+    "MCP server runs as separate process, independent of coordinator",
+    "State.json is single source of truth for workflow state",
+    "Auto-injection is conditional: only when state exists and workflow active",
+    "Tools can be invoked by coordinator OR by skill OR directly by Claude",
+    "Prompts help guide coordinator behavior (not enforce - coordinator can still make mistakes)",
+    "Hybrid approach: MCP (backend) + Skill (frontend) for best UX"
+  ]
+}

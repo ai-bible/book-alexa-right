@@ -1,0 +1,35 @@
+{
+  "$schema": "https://modelcontextprotocol.io/schema/config.json",
+  "mcpServers": {
+    "generation-state-tracker": {
+      "command": "python",
+      "args": [
+        "E:\\sources\\book-alexa-right\\mcp-servers\\generation_state_mcp.py"
+      ],
+      "env": {
+        "PYTHONUNBUFFERED": "1",
+        "WORKSPACE_PATH": "workspace/",
+        "STATE_FILE_PATTERN": "generation-state-*.json"
+      },
+      "disabled": false,
+      "alwaysAllow": []
+    }
+  },
+  "notes": [
+    "This is an example configuration for the Generation State Tracker MCP Server",
+    "To use:",
+    "1. Copy this configuration to your Claude Code config file",
+    "2. Adjust the 'args' path to match your installation location",
+    "3. Restart Claude Code",
+    "",
+    "Config file locations:",
+    "- Global: ~/.claude/config.json",
+    "- Project: .claude/config.json (in project root)",
+    "",
+    "After setup, you can use MCP tools:",
+    "- resume_generation(scene_id='0204')",
+    "- get_generation_status(scene_id='0204', detailed=True)",
+    "- cancel_generation(scene_id='0204', reason='...')",
+    "- list_generations(filter='failed', sort_by='started_at')"
+  ]
+}

@@ -1,0 +1,42 @@
+{
+  "status": "FAIL",
+  "blueprint_path": "tests/fixtures/blueprints/scene-9999-blueprint.md",
+  "validated_at": "2025-11-03T14:30:00Z",
+  "constraints": null,
+  "validation_checks": {
+    "structure_complete": false,
+    "constraints_defined": false,
+    "characters_specified": true,
+    "location_clear": true,
+    "no_contradictions": true
+  },
+  "issues": [
+    {
+      "severity": "CRITICAL",
+      "type": "missing_constraints",
+      "message": "Word count constraints are missing",
+      "location": "## Размер section",
+      "suggestion": "Add min/max word count requirements"
+    },
+    {
+      "severity": "HIGH",
+      "type": "incomplete_structure",
+      "message": "Sensory details section is incomplete",
+      "location": "## Детали сцены",
+      "suggestion": "Add specific sensory descriptions (smell, sound, touch)"
+    }
+  ],
+  "warnings": [
+    {
+      "severity": "MEDIUM",
+      "type": "vague_constraint",
+      "message": "Time duration is expressed as range, may lead to inconsistent pacing",
+      "location": "### Time section"
+    }
+  ],
+  "recommendations": [
+    "Fix critical issues before proceeding to generation",
+    "Consider adding more specific sensory constraints",
+    "Define explicit pacing requirements"
+  ]
+}

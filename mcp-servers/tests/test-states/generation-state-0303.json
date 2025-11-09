@@ -1,0 +1,82 @@
+{
+  "scene_id": "0303",
+  "session_id": "2025-11-03-101530-scene-0303",
+  "started_at": "2025-11-03T10:15:30Z",
+  "updated_at": "2025-11-03T10:19:15Z",
+  "current_phase": "IN_PROGRESS",
+  "current_step": 4,
+  "workflow_status": "IN_PROGRESS",
+
+  "steps": {
+    "step_1_file_check": {
+      "status": "COMPLETED",
+      "started_at": "2025-11-03T10:15:30Z",
+      "completed_at": "2025-11-03T10:15:31Z",
+      "duration_seconds": 1,
+      "agent_used": "generation-coordinator"
+    },
+    "step_2_blueprint_validation": {
+      "status": "COMPLETED",
+      "started_at": "2025-11-03T10:15:31Z",
+      "completed_at": "2025-11-03T10:15:50Z",
+      "duration_seconds": 19,
+      "agent_used": "blueprint-validator"
+    },
+    "step_3_verification_plan": {
+      "status": "COMPLETED",
+      "started_at": "2025-11-03T10:15:50Z",
+      "completed_at": "2025-11-03T10:16:02Z",
+      "duration_seconds": 12,
+      "agent_used": "verification-planner"
+    },
+    "step_4_generation": {
+      "status": "IN_PROGRESS",
+      "started_at": "2025-11-03T10:16:02Z",
+      "duration_seconds": 193,
+      "agent_used": "prose-writer"
+    }
+  },
+
+  "generation_attempts": {
+    "current_attempt": 2,
+    "max_attempts": 3,
+    "attempts_history": [
+      {
+        "attempt": 1,
+        "started_at": "2025-11-03T10:16:02Z",
+        "completed_at": "2025-11-03T10:17:18Z",
+        "status": "FAILED",
+        "error": "Word count too low (850 words, required 1000-1100)"
+      }
+    ]
+  },
+
+  "artifacts": {
+    "blueprint_path": "acts/act-1/chapters/chapter-03/scenes/scene-0303-blueprint.md",
+    "constraints_list_path": "workspace/artifacts/scene-0303-constraints.json",
+    "verified_plan_path": "workspace/artifacts/scene-0303-verified-plan.json",
+    "draft_path": "workspace/artifacts/scene-0303-draft-attempt-1.md"
+  },
+
+  "user_interactions": [
+    {
+      "step": 3,
+      "timestamp": "2025-11-03T10:15:57Z",
+      "action": "APPROVED",
+      "message": "User approved verification plan"
+    }
+  ],
+
+  "errors": [
+    {
+      "step": 4,
+      "timestamp": "2025-11-03T10:17:18Z",
+      "message": "Word count too low (850 words, required 1000-1100)",
+      "attempt": 1
+    }
+  ],
+
+  "metadata": {
+    "total_duration_seconds": 225
+  }
+}

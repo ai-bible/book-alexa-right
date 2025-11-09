@@ -1,0 +1,9 @@
+# MCP Server Dependencies for Generation State Tracker
+
+# MCP Python SDK with FastMCP framework
+# Provides @mcp.tool decorator, server initialization, and protocol handling
+mcp>=1.0.0
+
+# Pydantic v2 for input validation and schema generation
+# Required for BaseModel, Field, validators
+pydantic>=2.0.0

@@ -1,0 +1,131 @@
+{
+  "overall_status": "FAIL",
+  "validated_at": "2025-11-03T14:35:00Z",
+  "scene_id": "9999",
+  "draft_path": "workspace/artifacts/scene-9999/draft-attempt1.md",
+  "validators_results": {
+    "blueprint_compliance": {
+      "status": "FAIL",
+      "score": 0.45,
+      "checks": {
+        "location_match": false,
+        "characters_present": true,
+        "characters_absent": false,
+        "tone_appropriate": true,
+        "pov_correct": true
+      },
+      "issues": [
+        {
+          "severity": "CRITICAL",
+          "type": "location_violation",
+          "message": "Scene takes place in 'больница' (hospital), which is explicitly forbidden in blueprint",
+          "constraint": "location.forbidden: ['больница', 'клиника']",
+          "suggestion": "Rewrite scene to take place in 'медпалата Башни Книжников' as required"
+        },
+        {
+          "severity": "HIGH",
+          "type": "character_violation",
+          "message": "Себастьян Грей appears in scene, which violates 'absent' constraint",
+          "constraint": "characters.absent: ['Себастьян Грей']",
+          "suggestion": "Remove all references to Себастьян Грей from this scene"
+        }
+      ]
+    },
+    "world_consistency": {
+      "status": "FAIL",
+      "score": 0.52,
+      "checks": {
+        "canon_violations": true,
+        "technology_consistent": false,
+        "terminology_correct": true,
+        "worldbuilding_coherent": true
+      },
+      "issues": [
+        {
+          "severity": "CRITICAL",
+          "type": "technology_inconsistency",
+          "message": "Text describes 'инъекция лекарства' (drug injection), which contradicts established mnemonic editing technology",
+          "canon_reference": "Мнемоническое редактирование использует нейроинтерфейс, не фармакологию",
+          "suggestion": "Replace pharmaceutical intervention with neural interface procedure"
+        }
+      ]
+    },
+    "character_authenticity": {
+      "status": "PASS",
+      "score": 0.88,
+      "checks": {
+        "alexa_voice_authentic": true,
+        "reginald_characterization_consistent": true,
+        "dialogue_natural": true,
+        "motivations_clear": true
+      },
+      "issues": []
+    },
+    "temporal_logic": {
+      "status": "PASS",
+      "score": 1.0,
+      "checks": {
+        "timeline_consistent": true,
+        "time_references_accurate": true,
+        "chronology_coherent": true,
+        "no_temporal_paradoxes": true
+      },
+      "issues": []
+    },
+    "prose_quality": {
+      "status": "PASS",
+      "score": 0.85,
+      "checks": {
+        "grammar_correct": true,
+        "style_consistent": true,
+        "pacing_appropriate": true,
+        "sensory_details_present": true,
+        "show_dont_tell": true
+      },
+      "issues": []
+    },
+    "dialogue_validation": {
+      "status": "PASS",
+      "score": 0.91,
+      "checks": {
+        "character_voices_distinct": true,
+        "subtext_present": true,
+        "natural_flow": true,
+        "purpose_clear": true
+      },
+      "issues": []
+    },
+    "technical_accuracy": {
+      "status": "FAIL",
+      "score": 0.38,
+      "checks": {
+        "mnemonic_tech_accurate": false,
+        "medical_procedure_plausible": false,
+        "interface_description_consistent": true,
+        "terminology_correct": true
+      },
+      "issues": [
+        {
+          "severity": "CRITICAL",
+          "type": "technical_error",
+          "message": "Mnemonic editing procedure described as 'укол в позвоночник' (spinal injection), contradicts neural interface canon",
+          "canon_reference": "See world-bible/technology/mnemonic-editing.md",
+          "suggestion": "Describe proper neural interface connection via temporal cortex"
+        }
+      ]
+    }
+  },
+  "aggregated_score": 0.64,
+  "word_count": 512,
+  "reading_time_minutes": 3.4,
+  "critical_issues_count": 3,
+  "high_issues_count": 1,
+  "recommendations": [
+    "REJECT: Critical constraint violations detected",
+    "Fix location violation (change from 'больница' to 'медпалата Башни Книжников')",
+    "Remove prohibited character (Себастьян Грей)",
+    "Correct technology description (use neural interface, not injections)",
+    "Retry generation with enhanced constraint enforcement"
+  ],
+  "decision": "REJECTED_RETRY_REQUIRED"
+}

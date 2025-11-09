@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "ai-book-state-tracker": {
+      "type": "stdio",
+      "command": "python",
+      "args": [
+        "E:\\sources\\book-alexa-right\\mcp-servers\\generation_state_mcp.py"
+      ],
+      "env": {
+        "PYTHONUNBUFFERED": "1",
+        "WORKSPACE_PATH": "workspace/",
+        "STATE_FILE_PATTERN": "generation-state-*.json"
+      }
+    }
+  }
+}
