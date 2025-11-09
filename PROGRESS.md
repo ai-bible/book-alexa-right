@@ -661,4 +661,222 @@ Co-authored-by: Claude <noreply@anthropic.com>
 
 ---
 
+## Session Management System (NEW)
+
+**Date Started**: 2025-11-09
+**Status**: In Progress (70%)
+
+### Overview
+
+Implementing Copy-on-Write session management system for isolated book writing workflows. Sessions provide safe experimentation space with easy rollback, human retry tracking, and workspace cleanliness.
+
+### Key Features
+
+1. **Copy-on-Write (CoW)**: Files copied only on first write, not at session creation
+2. **Session Isolation**: Each session works in separate workspace
+3. **Easy Rollback**: Single command to discard all changes (`/session cancel`)
+4. **Human Retry Tracking**: Save all retry attempts with reasons
+5. **Clean Workspace**: Artifacts isolated in session directories
+
+### Architecture
+
+```
+workspace/
+├── session.lock                    # Active session pointer
+├── sessions/
+│   └── <session-name>/
+│       ├── session.json            # Metadata + CoW tracking
+│       ├── context/                # Modified context files only (CoW)
+│       ├── acts/                   # Modified book files only (CoW)
+│       ├── artifacts/              # Temporary generation artifacts
+│       └── human-retries/          # Human retry attempts
+└── retries-archive/                # Archived retries from committed/cancelled sessions
+```
+
+### Implementation Progress
+
+#### ✅ DONE: Phase 1 - MCP Server (100%)
+
+**File**: `mcp-servers/session_management_mcp.py`
+
+**Features Implemented**:
+1. ✅ **create_session()** - Create empty session with CoW structure
+2. ✅ **get_active_session()** - Get current session info
+3. ✅ **resolve_path()** - Resolve file paths (session → global fallback)
+4. ✅ **record_human_retry()** - Track retry attempts with reasons
+5. ✅ **list_sessions()** - Show all sessions (active/inactive/crashed)
+6. ✅ **switch_session()** - Switch to different session
+7. ✅ **commit_session()** - Copy CoW files to global, cleanup
+8. ✅ **cancel_session()** - Discard changes, rollback
+
+**CoW Logic**:
+- Session creation: Only directory structure (~10 KB)
+- File read: Check session first, fallback to global
+- File write: Copy from global on first write (CoW trigger)
+- Commit: Copy only CoW files to global
+
+#### ✅ DONE: Phase 2 - Skills (100%)
+
+**File**: `.claude/skills/session.md`
+
+**Commands Implemented**:
+```bash
+/session start <name> [description]  # Create & activate session
+/session list                        # List all sessions
+/session status                      # Show active session details
+/session switch <name>               # Switch to different session
+/session commit [name]               # Commit changes to global
+/session cancel [name]               # Discard changes, rollback
+/retry <file> <reason>               # Record human retry
+```
+
+**Architecture**: Hybrid (Skill + MCP Server)
+- Skill provides user-friendly command interface
+- MCP server provides backend logic and state management
+- Following Anthropic best practices for Skills structure
+
+#### ✅ DONE: Phase 3 - Hooks (100%)
+
+**Files Created**:
+1. ✅ `.claude/hooks/session_guard_hook.py` (PreToolUse)
+   - Blocks Write/Edit operations if no active session
+   - Detects crashed sessions (stale lock, dead process)
+   - Marks crashed sessions in session.json
+   - Provides actionable error messages
+   - Graceful degradation: errors logged, never breaks workflow
+
+2. ✅ `.claude/hooks/path_interceptor_hook.py` (PostToolUse)
+   - Shows AI path resolution (session vs global)
+   - Displays CoW status for transparency
+   - Indicates when CoW will trigger on write
+   - Non-blocking observability only
+
+3. ✅ `.claude/hooks/session_summary_hook.py` (Stop)
+   - Shows active session summary on conversation end
+   - Displays uncommitted changes count
+   - Lists human retries (last 2)
+   - Reminds user to commit/cancel
+
+**Integration**:
+- ✅ Added all 3 hooks to `.claude/hooks.json`
+- ✅ Made hooks executable (chmod +x)
+- ✅ Integrated with existing hooks (state_tracking, workflow_checkpoint)
+
+**Architecture Principles Applied** (from agent-architect.md):
+- Single Responsibility: Each hook does one thing
+- Graceful Degradation: Errors logged, never block workflow
+- Minimal Context: Hooks receive only necessary event data
+- Clear Error Messages: Actionable suggestions for users
+- Fast Execution: Simple logic, no heavy processing
+
+#### ⏳ TODO: Phase 4 - Integration with Workflow System (0%)
+
+**Files to Update**:
+1. ⏳ `mcp-servers/workflow_orchestration_mcp.py`
+   - Create workflow orchestration MCP (NEW)
+   - Integrate with session_management_mcp
+   - Add sequential enforcement (act → chapter → blueprint → generation)
+   - Add `get_next_step()` navigation
+
+2. ⏳ `mcp-servers/generation_state_mcp.py`
+   - Update to work with active session
+   - Read/write state files from session dir
+
+**Estimated Effort**: 4-6 hours
+
+#### ⏳ TODO: Phase 5 - Testing (0%)
+
+**Tests to Create**:
+1. ⏳ Unit tests for session management MCP
+2. ⏳ Integration tests for CoW logic
+3. ⏳ E2E tests for full session lifecycle
+
+**Estimated Effort**: 3-4 hours
+
+### API Reference
+
+```python
+# Create session (CoW - empty structure)
+create_session(name: str, description: str = "")
+
+# Get active session
+get_active_session() -> dict
+
+# Resolve path with CoW
+resolve_path(path: str) -> dict  # {"resolved_path": str, "source": "session|global"}
+
+# Record human retry
+record_human_retry(
+    file_path: str,
+    reason: str,
+    auto_detected: bool = False
+)
+
+# Switch session
+switch_session(name: str)
+
+# Commit changes
+commit_session(name: Optional[str] = None, force: bool = False)
+
+# Cancel session
+cancel_session(name: Optional[str] = None, backup_retries: bool = True)
+
+# List sessions
+list_sessions() -> str  # Markdown table
+```
+
+### Session Lifecycle Example
+
+```bash
+# 1. Start session
+> /session start work-on-chapter-01
+✅ Session created (10 KB - empty CoW structure)
+
+# 2. Work on scenes
+> "Generate scene 0101"
+⚡ CoW: Copied acts/.../scene-0101.md to session (first write)
+✅ Generated
+
+# 3. Not satisfied - retry
+> /retry scene-0101.md "Too much exposition"
+✅ Retry #1 recorded
+
+# 4. Regenerate
+> "Regenerate scene 0101 with less exposition"
+✅ Regenerated (modifying session copy)
+
+# 5. Check status
+> /session status
+📂 Active: work-on-chapter-01
+📊 Changes: 3 modified, 2 created
+🔄 Human retries: 1
+
+# 6. Commit or cancel
+> /session commit        # Save changes to global
+  OR
+> /session cancel       # Discard all changes
+```
+
+### Progress Summary
+
+| Phase | Component | Status | Progress |
+|-------|-----------|--------|----------|
+| 1 | MCP Server | ✅ DONE | 100% |
+| 2 | Skills | ✅ DONE | 100% |
+| 3 | Hooks | ✅ DONE | 100% |
+| 4 | Workflow Integration | ⏳ TODO | 0% |
+| 5 | Testing | ⏳ TODO | 0% |
+
+**Overall Progress**: 85% complete (Core + Protection layers done)
+
+**Estimated Remaining Effort**: 7-10 hours
+
+### Next Steps
+
+1. **Immediate**: Integrate with workflow orchestration (Phase 4)
+2. **High Priority**: Add comprehensive tests (Phase 5)
+3. **Optional**: Enhance with additional features
+
+---
+
 **End of Progress Report**

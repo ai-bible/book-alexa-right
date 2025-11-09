@@ -1,5 +1,17 @@
 {
   "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python .claude/hooks/session_guard_hook.py",
+            "description": "Block file writes if no active session (session management)"
+          }
+        ]
+      }
+    ],
     "PostToolUse": [
       {
         "matcher": "*",
@@ -8,6 +20,11 @@
             "type": "command",
             "command": "python .claude/hooks/state_tracking_hook.py",
             "description": "Track MCP state updates after tool calls"
+          },
+          {
+            "type": "command",
+            "command": "python .claude/hooks/path_interceptor_hook.py",
+            "description": "Show AI path resolution info (session vs global CoW)"
           }
         ]
       }
@@ -20,6 +37,11 @@
             "type": "command",
             "command": "python .claude/hooks/workflow_checkpoint_hook.py",
             "description": "Validate workflow state on conversation stop"
+          },
+          {
+            "type": "command",
+            "command": "python .claude/hooks/session_summary_hook.py",
+            "description": "Show active session summary on stop (remind to commit/cancel)"
           }
         ]
       }
