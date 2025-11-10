@@ -1,703 +1,521 @@
-# Generation State Tracker MCP Server
+# MCP Servers
 
-**Feature:** FEAT-0002 Workflow State Tracking
-**Version:** 1.0.0
-**Language:** Python
-**Framework:** FastMCP (MCP Python SDK)
+Model Context Protocol серверы для AI-Assisted Writing System.
 
----
+## 📖 Что такое MCP?
 
-## Overview
+**Model Context Protocol (MCP)** - это открытый протокол для интеграции AI с внешними системами и инструментами. MCP серверы предоставляют AI набор "tools" (функций), которые он может вызывать для выполнения задач.
 
-This MCP server provides tools to manage FEAT-0001 scene generation workflow states. It enables tracking, resuming, and monitoring of generation workflows through persistent state files.
+### Почему MCP критичен?
 
-### Key Features
+**Без MCP серверов система не работает**. Они обеспечивают:
 
-**Read-Only Operations:**
-- ✅ **Resume failed workflows** from saved state (skips completed steps)
-- 📊 **Real-time status** tracking with detailed progress
-- 🛑 **Cancel running workflows** with state preservation
-- 📋 **List all generations** with filtering and sorting
+- 🔄 **Session management** - изоляция изменений, CoW механизм
+- 📊 **Workflow orchestration** - отслеживание прогресса, recovery
+- 💾 **State persistence** - сохранение состояния между запусками
+- 🔒 **Safety** - валидация операций, предотвращение ошибок
 
-**Write Operations (NEW):**
-- 🚀 **Initialize workflows** with `start_generation`
-- ⏱️ **Track step progress** with `start_step` and `complete_step`
-- ⚠️ **Record errors** without failing workflow (`record_error`)
-- ❌ **Fail workflows** gracefully (`fail_generation`)
-- ✅ **Complete workflows** with metrics (`complete_generation`)
-- 💬 **Log user questions** for audit trail (`log_question_answer`)
+## 🎯 Архитектура MCP
 
----
-
-## Tools
-
-### Read-Only Tools (Status & Monitoring)
-
-#### 1. `resume_generation`
-
-Resume a failed or interrupted scene generation workflow from saved state.
-
-**Parameters:**
-- `scene_id` (string, required): Scene ID to resume (4 digits, e.g., '0204')
-- `force` (boolean, optional): Force resume even if warnings present (default: false)
-
-**Returns:** Markdown-formatted resume plan with:
-- Loaded state summary
-- Resume point (which step to continue from)
-- Completed steps (will be skipped)
-- Time saved by resuming
-
-**Example:**
-```python
-resume_generation(scene_id="0204", force=False)
+```
+┌─────────────────────────────────────────────────────────┐
+│                     Claude Code (AI)                    │
+└────────────────┬────────────────────────────────────────┘
+                 │
+                 │ Вызывает MCP tools
+                 ▼
+┌─────────────────────────────────────────────────────────┐
+│                   MCP Protocol Layer                    │
+│         (FastMCP - Python SDK для MCP)                  │
+└────────┬────────────────────┬────────────────┬──────────┘
+         │                    │                │
+         ▼                    ▼                ▼
+┌──────────────────┐ ┌─────────────────┐ ┌──────────────┐
+│  session_        │ │  workflow_      │ │ generation_  │
+│  management_     │ │  orchestration_ │ │ state_       │
+│  mcp.py          │ │  mcp.py         │ │ mcp.py       │
+│                  │ │                 │ │              │
+│ (CoW sessions)   │ │ (Workflow state)│ │ (Legacy)     │
+└──────────────────┘ └─────────────────┘ └──────────────┘
 ```
 
----
+## 📦 Установленные серверы
 
-#### 2. `get_generation_status`
+### 1. session_management_mcp.py ⭐ CRITICAL
 
-Get current status and progress of a scene generation workflow.
+**Статус**: Production, активно используется
+**Framework**: FastMCP
+**Dependencies**: session_models.py, session_utils.py
 
-**Parameters:**
-- `scene_id` (string, required): Scene ID to check (4 digits, e.g., '0204')
-- `detailed` (boolean, optional): Include detailed step breakdown (default: false)
+#### Назначение
 
-**Returns:** Markdown-formatted status report with:
-- Current step (X/7) and phase
-- Time elapsed since start
-- Step-by-step progress (if detailed=true)
-- Artifact paths
-- Error messages (if any)
+Управление Copy-on-Write сессиями для безопасного экспериментирования.
 
-**Example:**
+#### Ключевые возможности
+
+- ✅ Создание изолированных сессий
+- ✅ Переключение между сессиями
+- ✅ Commit изменений в global
+- ✅ Cancel сессий без изменения global
+- ✅ CoW механизм (файлы копируются только при изменении)
+- ✅ Путевое разрешение (session → global fallback)
+- ✅ Human retry tracking
+
+#### MCP Tools (6)
+
+| Tool | Описание |
+|------|----------|
+| `create_session` | Создать новую сессию |
+| `switch_session` | Переключиться на другую сессию |
+| `commit_session` | Закоммитить изменения в global |
+| `cancel_session` | Удалить сессию и все изменения |
+| `list_sessions` | Список всех сессий |
+| `session_status` | Статус активной сессии |
+
+#### Пример использования
+
 ```python
-get_generation_status(scene_id="0204", detailed=True)
-```
-
----
-
-#### 3. `cancel_generation`
-
-Cancel a currently running scene generation workflow.
-
-**Parameters:**
-- `scene_id` (string, required): Scene ID to cancel (4 digits, e.g., '0204')
-- `reason` (string, optional): Optional reason for cancellation
-
-**Returns:** Markdown-formatted cancellation report with:
-- Cancellation confirmation
-- Completed steps (preserved)
-- State file path (for future resume)
-
-**Example:**
-```python
-cancel_generation(scene_id="0204", reason="Blueprint has error")
-```
-
----
-
-#### 4. `list_generations`
-
-List all scene generations with their current status.
-
-**Parameters:**
-- `filter` (enum, optional): Filter by status - 'all', 'active', 'failed', 'completed' (default: 'all')
-- `sort_by` (string, optional): Sort by field - 'scene_id', 'started_at', 'status' (default: 'started_at')
-
-**Returns:** Markdown-formatted table with:
-- Scene ID
-- Status
-- Current step
-- Started time
-- Duration
-- Quick actions
-
-**Example:**
-```python
-list_generations(filter="failed", sort_by="started_at")
-```
-
----
-
-### Write Tools (State Management)
-
-#### 5. `start_generation`
-
-Initialize a new scene generation workflow by creating state file.
-
-**Parameters:**
-- `scene_id` (string, required): Scene ID to initialize (4 digits, e.g., '0204')
-- `blueprint_path` (string, required): Path to blueprint file
-- `initiated_by` (string, optional): Name of initiator (default: 'generation-coordinator')
-- `metadata` (dict, optional): Optional tracking metadata
-
-**Returns:** Markdown initialization report with:
-- Session ID (unique identifier)
-- Initial workflow status
-- State file path
-- Next steps guidance
-
-**Idempotency:** Returns warning if state file already exists (doesn't fail)
-
-**Example:**
-```python
-start_generation(
-    scene_id="0204",
-    blueprint_path="acts/act-1/chapters/chapter-02/scenes/scene-0204-blueprint.md",
-    initiated_by="generation-coordinator"
+# Создать сессию
+create_session(
+    name="experiment-scene-0204",
+    description="Trying darker tone"
 )
+
+# [Work in session - все изменения изолированы]
+
+# Проверить что изменилось
+session_status()
+
+# Если понравилось - закоммитить
+commit_session(name="experiment-scene-0204")
+
+# Если нет - отменить
+cancel_session(name="experiment-scene-0204")
 ```
 
----
+#### Внутренняя структура
 
-#### 6. `start_step`
+**session_models.py** - Pydantic модели и Enums:
+- `SessionStatus` - ACTIVE, INACTIVE, CRASHED
+- `ChangeType` - MODIFIED, CREATED, DELETED
+- Input validation для всех tools
 
-Mark a workflow step as IN_PROGRESS and record start timestamp.
+**session_utils.py** - Вспомогательные функции:
+- `_resolve_path_cow()` - путевое разрешение с CoW
+- `_add_cow_file()` - добавить файл в tracking
+- `_copy_workflow_states_to_global()` - интеграция с workflow orchestration
 
-**Parameters:**
-- `scene_id` (string, required): Scene ID (4 digits)
-- `step_number` (int, required): Step to start (1-7)
-- `phase_name` (string, required): Human-readable phase name (e.g., 'Blueprint Validation')
-- `agent_name` (string, optional): Name of executing agent
-
-**Returns:** Markdown confirmation with current step status
-
-**Idempotency:** Updates timestamp if step already IN_PROGRESS
-
-**Example:**
-```python
-start_step(
-    scene_id="0204",
-    step_number=1,
-    phase_name="File System Check",
-    agent_name="generation-coordinator"
-)
-```
-
----
-
-#### 7. `complete_step`
-
-Mark a workflow step as COMPLETED, record duration, and advance workflow.
-
-**Parameters:**
-- `scene_id` (string, required): Scene ID
-- `step_number` (int, required): Step to complete (1-7)
-- `duration_seconds` (float, required): Step execution time
-- `artifacts` (dict, optional): Artifact paths produced by this step
-- `metadata` (dict, optional): Additional step metadata
-
-**Returns:** Markdown summary with completed step info and next step guidance
-
-**Idempotency:** Returns info message if step already COMPLETED
-
-**Example:**
-```python
-complete_step(
-    scene_id="0204",
-    step_number=1,
-    duration_seconds=45.2,
-    artifacts={"constraints_list_path": "workspace/artifacts/scene-0204-constraints.json"}
-)
-```
-
----
-
-#### 8. `record_error`
-
-Record an error in the errors array WITHOUT changing workflow_status (non-terminal).
-
-**Parameters:**
-- `scene_id` (string, required): Scene ID
-- `step_number` (int, required): Step where error occurred (1-7)
-- `error_type` (string, required): Error category (e.g., 'location_constraint_violated')
-- `error_message` (string, required): Detailed error description
-- `severity` (enum, required): 'LOW', 'MEDIUM', 'HIGH', or 'CRITICAL'
-- `retry_count` (int, optional): Retry attempt number
-
-**Returns:** Markdown confirmation with error count and severity
-
-**Idempotency:** NOT idempotent - each call adds new error to array
-
-**Difference from fail_generation:**
-- `record_error`: Logs error, keeps workflow IN_PROGRESS, allows retry
-- `fail_generation`: Logs error, sets workflow_status=FAILED (terminal)
-
-**Example:**
-```python
-record_error(
-    scene_id="0204",
-    step_number=4,
-    error_type="location_constraint_violated",
-    error_message="Location constraint violated: Found больница, required Башня Книжников",
-    severity="HIGH",
-    retry_count=1
-)
-```
-
----
-
-#### 9. `fail_generation`
-
-Mark workflow as FAILED (terminal state) after all retry attempts exhausted.
-
-**Parameters:**
-- `scene_id` (string, required): Scene ID
-- `step_number` (int, required): Step where failure occurred (1-7)
-- `failure_reason` (string, required): Detailed failure explanation
-- `final_errors` (list, optional): All error dicts to record
-
-**Returns:** Markdown failure report with resume instructions
-
-**Idempotency:** Updates failure_reason if already FAILED
-
-**Example:**
-```python
-fail_generation(
-    scene_id="0204",
-    step_number=4,
-    failure_reason="Location constraint violated - max attempts reached (3/3)",
-    final_errors=[]
-)
-```
-
----
-
-#### 10. `complete_generation`
-
-Mark workflow as COMPLETED (terminal state) after successful generation.
-
-**Parameters:**
-- `scene_id` (string, required): Scene ID
-- `final_scene_path` (string, required): Path to generated scene file
-- `validation_report_path` (string, required): Path to validation report
-- `word_count` (int, required): Final word count
-- `total_duration_seconds` (float, required): Total workflow duration
-- `retry_count` (int, optional): Number of retries (default: 0)
-
-**Returns:** Markdown success report with final metrics
-
-**Idempotency:** Returns success message if already COMPLETED
-
-**Example:**
-```python
-complete_generation(
-    scene_id="0204",
-    final_scene_path="acts/act-1/chapters/chapter-02/content/scene-0204.md",
-    validation_report_path="workspace/artifacts/scene-0204-validation-report.md",
-    word_count=2847,
-    total_duration_seconds=324.5,
-    retry_count=1
-)
-```
-
----
-
-#### 11. `log_question_answer` (BONUS)
-
-Log QuestionTool interaction to state for audit trail and decision tracking.
-
-**Parameters:**
-- `scene_id` (string, required): Scene ID
-- `question` (string, required): Question asked to user via QuestionTool
-- `answer` (string, required): User's answer
-- `timestamp` (string, optional): ISO format timestamp (auto-generated if not provided)
-
-**Returns:** Markdown confirmation with question/answer summary
-
-**Idempotency:** NOT idempotent - each call adds new Q&A entry
-
-**Use Cases:**
-- Audit trail for user decisions during workflow
-- Context preservation for future workflow steps
-- Analytics on user interaction patterns
-
-**Example:**
-```python
-log_question_answer(
-    scene_id="0204",
-    question="Approve verification plan for Step 3?",
-    answer="Yes, proceed with generation"
-)
-```
-
----
-
-## Installation
-
-### 1. Install Dependencies
-
-```bash
-pip install -r mcp-servers/requirements.txt
-```
-
-Requirements:
-- `mcp>=1.0.0` - MCP Python SDK with FastMCP
-- `pydantic>=2.0.0` - Input validation
-
-### 2. Configure Claude Code
-
-Add to your Claude Code config file (`~/.claude/config.json` or project-specific config):
+#### Состояние сессии
 
 ```json
 {
-  "mcpServers": {
-    "generation-state-tracker": {
+  "name": "experiment-scene-0204",
+  "description": "Trying darker tone",
+  "status": "ACTIVE",
+  "created_at": "2025-11-10T14:30:00Z",
+  "cow_files": [
+    {
+      "path": "acts/act-1/chapters/chapter-01/content/scene-0101.md",
+      "type": "modified",
+      "copied_at": "2025-11-10T14:35:00Z",
+      "size_bytes": 4096
+    }
+  ],
+  "changes": {
+    "modified": ["acts/.../scene-0101.md"],
+    "created": [],
+    "deleted": []
+  },
+  "stats": {
+    "total_files_changed": 1,
+    "session_size_bytes": 4096
+  }
+}
+```
+
+---
+
+### 2. workflow_orchestration_mcp.py ⭐ CORE
+
+**Статус**: Production, активно используется
+**Framework**: FastMCP
+**Dependencies**: Нет (standalone)
+
+#### Назначение
+
+Централизованное управление состоянием Planning и Generation workflows.
+
+#### Ключевые возможности
+
+- ✅ Sequential enforcement (нельзя пропустить steps)
+- ✅ Human-in-the-loop checkpoints (approval flow)
+- ✅ State persistence (JSON files)
+- ✅ Resume capability (продолжение после сбоя)
+- ✅ Session-aware paths (интеграция с sessions)
+
+#### MCP Tools (8)
+
+| Tool | Описание |
+|------|----------|
+| `get_workflow_status` | Получить статус workflow |
+| `get_next_step` | Узнать следующий step/phase |
+| `validate_prerequisites` | Проверить можно ли начать step |
+| `approve_step` | Одобрить human-in-the-loop checkpoint |
+| `update_workflow_state` | Обновить состояние step/phase |
+| `list_workflows` | Список всех workflows (с фильтрами) |
+| `resume_workflow` | Продолжить failed workflow |
+| `cancel_workflow` | Отменить workflow |
+
+#### Workflow Types
+
+**Generation Workflow** (7 steps):
+1. File Check
+2. Blueprint Validation
+3. Verification Plan (HUMAN APPROVAL)
+4. Generation (retry до 3 раз)
+5. Fast Compliance Check
+6. Full Validation
+7. Final Output
+
+**Planning Workflow** (5 phases):
+1. Exploration
+2. Scenarios (HUMAN APPROVAL)
+3. Path Planning
+4. Detailing
+5. Integration
+
+#### Пример использования
+
+```python
+# STEP 0B: Initialize workflow state
+workflow_id = f"generation-scene-{scene_id}-{timestamp}"
+
+# Create initial state (manual JSON write)
+state = {
+    "workflow_id": workflow_id,
+    "workflow_type": "generation",
+    "status": "in_progress",
+    "steps": [...]
+}
+
+# STEP 1: Validate prerequisites before starting
+result = validate_prerequisites(workflow_id, step=1)
+if not result["can_start_step"]:
+    return error(result["blocking_issues"])
+
+# Start step 1
+update_workflow_state(workflow_id, step=1, status="in_progress")
+
+# [Do work]
+
+# Complete step 1
+update_workflow_state(
+    workflow_id,
+    step=1,
+    status="completed",
+    artifacts={"blueprint_path": "..."}
+)
+
+# STEP 3: Human approval
+update_workflow_state(workflow_id, step=3, status="waiting_approval")
+# [Show plan to user]
+approve_step(workflow_id, step=3, approved=True)
+```
+
+#### Workflow State
+
+```json
+{
+  "workflow_id": "generation-scene-0204-20251110-143000",
+  "workflow_type": "generation",
+  "status": "in_progress",
+  "current_step": 3,
+  "scene_id": "0204",
+  "started_at": "2025-11-10T14:30:00Z",
+  "steps": [
+    {
+      "step": 1,
+      "name": "File Check",
+      "status": "completed",
+      "started_at": "2025-11-10T14:30:01Z",
+      "completed_at": "2025-11-10T14:30:05Z",
+      "artifacts": {"blueprint_path": "..."}
+    },
+    {
+      "step": 3,
+      "name": "Verification Plan",
+      "status": "waiting_approval",
+      "started_at": "2025-11-10T14:30:15Z",
+      "approval_required": true
+    }
+  ]
+}
+```
+
+---
+
+### 3. generation_state_mcp.py ⚠️ DEPRECATED
+
+**Статус**: Legacy, заменяется на workflow_orchestration_mcp
+**Framework**: FastMCP
+**Причина deprecation**: Функциональность дублируется workflow_orchestration
+
+#### Почему оставлен?
+
+- Обратная совместимость со старым кодом
+- Постепенная миграция на workflow_orchestration
+- Будет удалён в Phase 5
+
+#### Что делать?
+
+**Новый код**: используй `workflow_orchestration_mcp`
+**Старый код**: работает, но планируй миграцию
+
+---
+
+## ⚙️ Установка и настройка
+
+### 1. Требования
+
+```bash
+# Python 3.10+
+python --version
+
+# FastMCP (MCP Python SDK)
+pip install fastmcp
+
+# Pydantic для валидации
+pip install pydantic
+```
+
+### 2. Регистрация в Claude Code
+
+Файл `.claude/mcp.json`:
+
+```json
+{
+  "servers": {
+    "session_management": {
       "command": "python",
-      "args": [
-        "E:\\sources\\book-alexa-right\\mcp-servers\\generation_state_mcp.py"
-      ],
+      "args": ["mcp-servers/session_management_mcp.py"],
+      "disabled": false
+    },
+    "workflow_orchestration": {
+      "command": "python",
+      "args": ["mcp-servers/workflow_orchestration_mcp.py"],
+      "disabled": false
+    },
+    "generation_state": {
+      "command": "python",
+      "args": ["mcp-servers/generation_state_mcp.py"],
+      "disabled": true
+    }
+  }
+}
+```
+
+**Важно**: `generation_state` отключен (deprecated), остальные обязательны!
+
+### 3. Проверка установки
+
+```bash
+# Запустить MCP server напрямую (для тестирования)
+python mcp-servers/session_management_mcp.py
+
+# Должно показать список tools
+```
+
+В Claude Code:
+```
+create_session(name="test", description="Installation test")
+```
+
+Если работает → MCP настроен правильно ✅
+
+## 🧪 Тестирование
+
+### Manual Testing
+
+```python
+# Test session management
+create_session(name="test-session", description="Test")
+session_status()
+commit_session(name="test-session")
+
+# Test workflow orchestration
+# (требует создания test workflow state file)
+list_workflows(workflow_type="generation")
+```
+
+### Debugging
+
+**Включить debug output**:
+
+```json
+{
+  "servers": {
+    "session_management": {
+      "command": "python",
+      "args": ["mcp-servers/session_management_mcp.py"],
       "env": {
-        "PYTHONUNBUFFERED": "1"
+        "MCP_DEBUG": "1"
       }
     }
   }
 }
 ```
 
-**Important:** Adjust the path to match your installation location.
-
-### 3. Restart Claude Code
-
-After adding the configuration, restart Claude Code to load the MCP server.
-
----
-
-## Usage
-
-### State Lifecycle
-
-**Complete workflow state lifecycle:**
-
-```
-┌──────────────────────────────────────────────────────────────┐
-│  1. start_generation(scene_id, blueprint_path)               │
-│     → Creates state file, initializes workflow               │
-└──────────────────────┬───────────────────────────────────────┘
-                       │
-                       ▼
-┌──────────────────────────────────────────────────────────────┐
-│  2. For each step (1-7):                                     │
-│     a) start_step(scene_id, step_number, phase_name)         │
-│        → Marks step IN_PROGRESS                              │
-│     b) Perform step operations                               │
-│     c) complete_step(scene_id, step_number, duration)        │
-│        → Marks step COMPLETED, advances workflow             │
-│                                                              │
-│     On error during step:                                    │
-│     - record_error(scene_id, step, error_type, message)      │
-│       → Logs error, keeps workflow IN_PROGRESS               │
-│     - Retry or...                                            │
-│     - fail_generation(scene_id, failure_reason)              │
-│       → Sets workflow_status=FAILED (terminal)               │
-└──────────────────────┬───────────────────────────────────────┘
-                       │
-                       ▼ (all 7 steps completed)
-┌──────────────────────────────────────────────────────────────┐
-│  3. complete_generation(scene_id, paths, metrics)            │
-│     → Sets workflow_status=COMPLETED (terminal)              │
-└──────────────────────────────────────────────────────────────┘
-
-Optional: log_question_answer() - anytime during workflow
-```
-
-### Basic Workflow
-
-**Automatic (via generation-coordinator):**
-1. **Start generation**:
-   ```
-   User: "Generate scene 0204"
-   ```
-   Coordinator automatically calls: `start_generation` → `start_step` → operations → `complete_step` → ... → `complete_generation`
-
-**Manual monitoring:**
-2. **Check progress** during generation:
-   ```python
-   get_generation_status(scene_id="0204")
-   ```
-
-3. **If generation fails**, resume from checkpoint:
-   ```python
-   resume_generation(scene_id="0204")
-   ```
-
-4. **List all generations** to see overview:
-   ```python
-   list_generations(filter="active")
-   ```
-
----
-
-## State File Structure
-
-State files are JSON, located at: `workspace/generation-state-{scene_id}.json`
-
-**Key fields:**
-```json
-{
-  "scene_id": "0204",
-  "session_id": "2025-11-03-143045-scene-0204",
-  "workflow_status": "IN_PROGRESS",
-  "current_step": 4,
-  "started_at": "2025-11-03T14:30:45Z",
-  "updated_at": "2025-11-03T14:36:24Z",
-
-  "steps": {
-    "step_1_file_check": {
-      "status": "COMPLETED",
-      "started_at": "...",
-      "completed_at": "...",
-      "duration_seconds": 1
-    }
-    // ... steps 2-7
-  },
-
-  "generation_attempts": {
-    "current_attempt": 2,
-    "max_attempts": 3
-  },
-
-  "artifacts": {
-    "blueprint_path": "...",
-    "draft_path": "...",
-    "final_scene_path": "..." // Added on completion
-  },
-
-  "errors": [],
-
-  "user_questions": [  // NEW: QuestionTool logging
-    {
-      "question": "Approve verification plan for Step 3?",
-      "answer": "Yes, proceed",
-      "timestamp": "2025-11-03T14:32:15Z"
-    }
-  ],
-
-  "completion_metrics": {  // Added on completion
-    "final_scene_path": "...",
-    "validation_report_path": "...",
-    "word_count": 2847,
-    "total_duration_seconds": 324.5,
-    "retry_count": 1
-  }
-}
-```
-
----
-
-## Error Handling
-
-All tools return clear, actionable error messages:
-
-### File Not Found
-```
-❌ ERROR: No state found for scene 0204
-
-Possible reasons:
-  1. Scene never generated
-  2. State file deleted
-  3. Wrong scene ID
-
-💡 Next steps:
-  - Check scene exists: acts/.../scene-0204-blueprint.md
-  - List all generations: Use list_generations tool
-  - Start new generation: "Generate scene 0204"
-```
-
-### Corrupted State
-```
-Error: State file corrupted: workspace/generation-state-0204.json. JSON error: Expecting property name...
-```
-
-### Wrong Status
-```
-❌ ERROR: Scene 0204 already completed
-
-Completed at: 2025-11-03T15:42:33Z
-Session ID: 2025-11-03-143045-scene-0204
-
-💡 View final output: acts/act-1/chapters/chapter-02/content/scene-0204.md
-```
-
----
-
-## Testing
-
-### Manual Testing
-
+**Проверить логи**:
 ```bash
-# 1. Run server in background (for manual testing)
-# Note: MCP servers are long-running processes
-python mcp-servers/generation_state_mcp.py
+# Claude Code логи показывают MCP вызовы
+claude code --verbose
 ```
 
-### Testing with Claude Code
+## 🔍 Troubleshooting
 
-Once configured, test by:
+### MCP server не запускается
 
-1. Start a generation that will fail:
-   ```
-   User: "Generate scene 9999"  # Non-existent scene
-   ```
+**Симптомы**: Tools не доступны, ошибки при вызове
 
-2. Check list:
-   ```python
-   list_generations()
-   ```
+**Решения**:
+1. Проверь `.claude/mcp.json` - правильные пути?
+2. Проверь Python version: `python --version` (3.10+)
+3. Проверь dependencies: `pip list | grep fastmcp`
+4. Запусти server напрямую для проверки ошибок
 
-3. Resume:
-   ```python
-   resume_generation(scene_id="0204")
-   ```
+### Tools возвращают ошибки
 
----
+**Симптомы**: Tool вызывается но возвращает error
 
-## Integration
+**Решения**:
+1. Проверь параметры - используй правильные типы
+2. Проверь файловую систему - workspace/ существует?
+3. Проверь права доступа - Python может писать в workspace/?
+4. Проверь логи MCP server (если debug включен)
 
-### With generation-coordinator
+### Session не коммитится
 
-The `generation-coordinator` agent must be updated to:
+**Симптомы**: `commit_session` не применяет изменения
 
-1. **Create state.json** at workflow start (Step 1)
-2. **Update state.json** after each step completion
-3. **Check for existing state** before starting new generation
-4. **Resume from state** if state exists and workflow failed
+**Решения**:
+1. Проверь session status - файлы изменены?
+2. Проверь CoW tracking - `session_status()` показывает cow_files?
+3. Проверь права на global файлы - можно писать?
+4. Проверь workspace/sessions/{name}/ - файлы там?
 
-See: `.claude/agents/generation/generation-coordinator.md`
+### Workflow не возобновляется
 
-### With Claude Code Skill
+**Симптомы**: `resume_workflow` не находит state
 
-A companion skill provides user-friendly commands:
+**Решения**:
+1. Проверь workflow-state/ директорию
+2. Проверь session path - может state в session?
+3. Проверь workflow_id - правильный формат?
+4. Проверь JSON файл - валидный?
 
-- `/generation-state status 0204`
-- `/generation-state resume 0204`
-- `/generation-state cancel 0204`
-- `/generation-state list --failed`
+## 📚 API Reference
 
-See: `.claude/skills/generation-state.md`
+### Session Management API
 
----
+Подробная документация в коде: `session_management_mcp.py`
 
-## Architecture
+**Ключевые типы**:
+```python
+class SessionStatus(str, Enum):
+    ACTIVE = "ACTIVE"
+    INACTIVE = "INACTIVE"
+    CRASHED = "CRASHED"
 
-```
-┌─────────────────────────────────────────┐
-│  USER / CLAUDE CODE                     │
-└─────────────┬───────────────────────────┘
-              │
-              ├─────────────────────┐
-              │                     │
-              ▼                     ▼
-┌─────────────────────┐  ┌──────────────────────┐
-│  MCP SERVER         │  │  SKILL               │
-│  (Backend)          │  │  (Frontend)          │
-│                     │  │                      │
-│  Tools:             │  │  Commands:           │
-│  - resume           │◀─┤  /generation-state   │
-│  - status           │  │                      │
-│  - cancel           │  │  Formats output      │
-│  - list             │  │  for users           │
-│                     │  │                      │
-│  Manages:           │  └──────────────────────┘
-│  - State files      │
-│  - File I/O         │
-│  - Validation       │
-└─────────────────────┘
-         │
-         ▼
-┌─────────────────────────────────────────┐
-│  STATE FILES                            │
-│  workspace/generation-state-*.json      │
-└─────────────────────────────────────────┘
+class ChangeType(str, Enum):
+    MODIFIED = "modified"
+    CREATED = "created"
+    DELETED = "deleted"
 ```
 
----
+### Workflow Orchestration API
 
-## Performance
+Подробная документация в коде: `workflow_orchestration_mcp.py`
 
-- **resume_generation**: 100-200ms (reads one JSON file)
-- **get_generation_status**: <100ms (reads one JSON file)
-- **cancel_generation**: <200ms (updates one JSON file)
-- **list_generations**: <500ms (reads all state files, typically <50)
+**Ключевые типы**:
+```python
+WorkflowType = "generation" | "planning"
+StepStatus = "pending" | "in_progress" | "completed" | "failed" | "waiting_approval"
+```
 
-State files are small (<100KB), so performance is fast.
+## 🎯 Best Practices
 
----
+### DO's ✅
 
-## Troubleshooting
+1. **Всегда используй sessions для экспериментов** - безопасно
+2. **Проверяй prerequisites перед каждым step** - sequential enforcement
+3. **Сохраняй workflow state часто** - каждый step start/complete
+4. **Обрабатывай human approval** - не пропускай waiting_approval
+5. **Используй resume при сбоях** - не начинай заново
 
-### MCP server not loading
+### DON'Ts ❌
 
-1. Check config path is correct
-2. Verify Python is in PATH
-3. Check dependencies installed: `pip list | grep mcp`
-4. Restart Claude Code
+1. **Не коммить сессию без проверки** - может быть ошибка
+2. **Не пропускать steps** - validate_prerequisites обязателен
+3. **Не игнорировать failed workflows** - resume или cancel
+4. **Не хардкодить пути** - используй session-aware paths
+5. **Не удалять state files вручную** - используй MCP tools
 
-### Tools not appearing
+## 🔮 Roadmap
 
-1. Check MCP server is running: `ps aux | grep generation_state_mcp`
-2. Check logs (if configured)
-3. Restart Claude Code
+### Phase 5: Consolidation
 
-### State file errors
+- [ ] Удалить generation_state_mcp.py (deprecated)
+- [ ] Мигрировать весь код на workflow_orchestration_mcp
+- [ ] Унифицировать API между servers
 
-1. Check workspace/ directory exists
-2. Verify write permissions
-3. Check for corrupted JSON: `python -m json.tool workspace/generation-state-0204.json`
+### Phase 6: Enhancements
 
----
+- [ ] Metrics collection MCP server
+- [ ] Backup/restore MCP server
+- [ ] Cache management MCP server
 
-## Development
+### Phase 7: Optimization
 
-### Adding New Tools
+- [ ] Batch operations support
+- [ ] Async tool execution
+- [ ] Performance monitoring
 
-1. Define Pydantic input model
-2. Create tool function with `@mcp.tool` decorator
-3. Add comprehensive docstring
-4. Test with sample inputs
-5. Update README
+## 📖 References
 
-### Code Quality Checklist
+### Internal Documentation
 
-- [ ] All tools have Pydantic input models
-- [ ] All tools have comprehensive docstrings
-- [ ] All tools have error handling
-- [ ] All tools return markdown-formatted output
-- [ ] Shared logic extracted into utility functions
-- [ ] Type hints used throughout
-- [ ] Async/await for all I/O operations
+- [ARCHITECTURE.md](../ARCHITECTURE.md) - System architecture
+- [README.md](../README.md) - User guide
+- [.claude/hooks/README.md](../.claude/hooks/README.md) - Hooks documentation
 
----
+### External Resources
 
-## License
+- [Model Context Protocol Specification](https://modelcontextprotocol.io/)
+- [FastMCP Documentation](https://github.com/jlowin/fastmcp)
+- [Pydantic Documentation](https://docs.pydantic.dev/)
+- [Claude Code MCP Guide](https://docs.claude.com/en/docs/claude-code/mcp)
 
-Proprietary - for personal use in book writing project
+## 📝 Contributing
 
----
+### Добавление нового MCP server
 
-## Version History
+1. Создай `{name}_mcp.py` в `mcp-servers/`
+2. Используй FastMCP framework
+3. Добавь Pydantic models для валидации
+4. Зарегистрируй в `.claude/mcp.json`
+5. Обнови этот README
+6. Добавь в ARCHITECTURE.md если нужно
 
-**v2.0.0** (2025-11-03) - Phase 1: Write Operations
-- ✅ Added 7 new state management tools
-- 🚀 `start_generation` - Initialize workflow
-- ⏱️ `start_step` / `complete_step` - Track step progress
-- ⚠️ `record_error` - Non-terminal error logging
-- ❌ `fail_generation` - Terminal failure state
-- ✅ `complete_generation` - Terminal success state
-- 💬 `log_question_answer` - QuestionTool audit trail (BONUS)
-- 📊 Total: 11 tools (4 read-only + 7 write)
-- 🔧 Added helper functions for state management
-- 📝 Enhanced state file schema with `user_questions` and `completion_metrics`
+### Добавление нового tool
 
-**v1.0.0** (2025-11-03) - Initial Release
-- Initial release
-- 4 read-only tools: resume, status, cancel, list
-- State file persistence
-- Markdown-formatted outputs
-- Comprehensive error handling
+1. Декоратор `@mcp.tool()` для функции
+2. Pydantic model для параметров
+3. Docstring с описанием (показывается AI)
+4. Error handling с понятными сообщениями
+5. Обнови документацию в коде
 
 ---
 
-**Last Updated:** 2025-11-03
-**Author:** AI-Assisted Writing System
-**Status:** Production Ready
+**Last Updated**: 2025-11-10
+**Version**: Phase 4 (Workflow Orchestration)
+**Maintainers**: AI-assisted writing system team
