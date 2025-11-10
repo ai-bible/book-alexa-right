@@ -19,8 +19,12 @@ State files:
 from pathlib import Path
 from datetime import datetime, timezone
 import shutil
+import logging
 
 from mcp.server.fastmcp import FastMCP
+
+# Configure logger
+logger = logging.getLogger(__name__)
 
 # Import models (Enums + Pydantic models)
 from session_models import (
@@ -95,9 +99,9 @@ async def get_active_session() -> str:
         f"**Description**: {data.get('description', 'No description')}",
         "",
         "📊 **Changes** (uncommitted):",
-        f"   • Modified: {len(data['changes']['modified'])} files",
-        f"   • Created: {len(data['changes']['created'])} files",
-        f"   • Deleted: {len(data['changes']['deleted'])} files",
+        f"   • Modified: {len(data['changes'][ChangeType.MODIFIED.value])} files",
+        f"   • Created: {len(data['changes'][ChangeType.CREATED.value])} files",
+        f"   • Deleted: {len(data['changes'][ChangeType.DELETED.value])} files",
         "",
         f"💾 **Session Size**: {_format_file_size(stats.get('session_size_bytes', 0))}",
         "",
@@ -107,7 +111,7 @@ async def get_active_session() -> str:
         f"   • Acts: {session['acts_path']}/",
     ]
 
-    # Human retries (Comment 11: use named expression + list extend)
+    # Human retries
     if retries := data.get("human_retries", []):
         lines.extend([
             "",
@@ -163,9 +167,9 @@ async def create_session(params: CreateSessionInput) -> str:
         "status": SessionStatus.ACTIVE.value,
         "cow_files": [],
         "changes": {
-            "modified": [],
-            "created": [],
-            "deleted": []
+            ChangeType.MODIFIED.value: [],
+            ChangeType.CREATED.value: [],
+            ChangeType.DELETED.value: []
         },
         "human_retries": [],
         "stats": {
@@ -425,7 +429,7 @@ No sessions found.
     if active_name:
         lines.extend([f"🔒 Active: {active_name}", ""])
 
-    # Show crashed sessions if any (Comment 12: merge list appends)
+    # Show crashed sessions if any
     if crashed := [s for s in sessions if s["status"] == SessionStatus.CRASHED.value]:
         lines.append(f"⚠️ Crashed sessions ({len(crashed)}):")
         lines.extend([f"   • {s['name']}\n     Action required: /session cancel <name>" for s in crashed])
@@ -495,7 +499,7 @@ Error: {str(e)}
     # Update session.lock
     _update_session_lock(session_name)
 
-    # Format response (Comment 13: merge list appends)
+    # Format response
     lines = ["🔄 SWITCHED SESSION", ""]
 
     if prev_name:
@@ -513,8 +517,8 @@ Error: {str(e)}
     stats = session_data.get("stats", {})
     lines.extend([
         "📊 Progress:",
-        f"   • Modified files: {len(session_data['changes']['modified'])}",
-        f"   • Created files: {len(session_data['changes']['created'])}",
+        f"   • Modified files: {len(session_data['changes'][ChangeType.MODIFIED.value])}",
+        f"   • Created files: {len(session_data['changes'][ChangeType.CREATED.value])}",
         f"   • Session size: {_format_file_size(stats.get('session_size_bytes', 0))}"
     ])
 
@@ -582,9 +586,9 @@ Session '{session_name}' has no modified files.
             "📊 Changes to be committed:"
         ]
 
-        modified = session_data["changes"]["modified"]
-        created = session_data["changes"]["created"]
-        deleted = session_data["changes"]["deleted"]
+        modified = session_data["changes"][ChangeType.MODIFIED.value]
+        created = session_data["changes"][ChangeType.CREATED.value]
+        deleted = session_data["changes"][ChangeType.DELETED.value]
 
         if modified:
             lines.append(f"\n   Modified files ({len(modified)}):")
@@ -625,13 +629,13 @@ Session '{session_name}' has no modified files.
 
     for cow_file in session_data["cow_files"]:
         file_path = cow_file["path"]
-        file_type = cow_file.get("type", "modified")
+        file_type = cow_file.get("type", ChangeType.MODIFIED.value)
         session_file = session_path / file_path
         global_file = Path(file_path)
 
         try:
-            # Handle deleted files (Comment 4: archive before deleting)
-            if file_type == "deleted":
+            # Handle deleted files - archive before deleting
+            if file_type == ChangeType.DELETED.value:
                 # Archive before deleting
                 timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
                 archive_dir = WORKSPACE_PATH / "deleted-archive" / session_name / timestamp
@@ -669,11 +673,12 @@ Session '{session_name}' has no modified files.
     # Copy workflow states to global (Phase 4 integration)
     workflow_states_copied, workflow_states_failed = _copy_workflow_states_to_global(session_name, session_path)
 
-    # Clean up session directory (Comment 5: error handling)
+    # Clean up session directory
     try:
         shutil.rmtree(session_path)
     except Exception as e:
         # Log error but don't fail commit - session data already copied
+        logger.error(f"Failed to clean up session directory '{session_path}': {e}")
         failed_files.append((f"session directory cleanup: {session_path}", str(e)))
 
     # Clear session.lock if this was active session
@@ -779,7 +784,14 @@ async def cancel_session(params: CancelSessionInput) -> str:
     try:
         session_data = _load_session_data(session_name)
     except Exception:
-        session_data = {"human_retries": [], "changes": {"modified": [], "created": [], "deleted": []}}
+        session_data = {
+            "human_retries": [],
+            "changes": {
+                ChangeType.MODIFIED.value: [],
+                ChangeType.CREATED.value: [],
+                ChangeType.DELETED.value: []
+            }
+        }
 
     # Backup human retries if requested
     retries_backed_up = False

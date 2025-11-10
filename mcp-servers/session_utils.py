@@ -280,14 +280,15 @@ def _add_cow_file(session_name: str, file_path: str, change_type: str) -> None:
     session_path = _get_session_path(session_name)
 
     # Check if already tracked
-    existing_entry = None
-    for cow_file in session_data["cow_files"]:
-        if cow_file["path"] == file_path:
-            existing_entry = cow_file
-            break
-
-    if existing_entry:
-        # Update change_type if status changed (Comment 2: bug_risk fix)
+    if existing_entry := next(
+        (
+            cow_file
+            for cow_file in session_data["cow_files"]
+            if cow_file["path"] == file_path
+        ),
+        None,
+    ):
+        # Update change_type if status changed
         old_type = existing_entry["type"]
         if old_type != change_type:
             # Remove from old change list
@@ -305,7 +306,7 @@ def _add_cow_file(session_name: str, file_path: str, change_type: str) -> None:
             _save_session_data(session_name, session_data)
         return
 
-    # Get file size from session directory (Comment 1: explicit session path)
+    # Get file size from session directory
     session_file = session_path / file_path
     size_bytes = os.path.getsize(session_file) if session_file.exists() else 0
 
