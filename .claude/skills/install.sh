@@ -13,7 +13,7 @@ NC='\033[0m' # No Color
 
 # Configuration
 SKILL_FILE="agent-architect.md"
-AGENT_FILE="../agents/agent-architect.md"
+AGENT_FILE="agent-architect-agent.md"
 SKILL_DIR="$HOME/.claude/skills"
 AGENT_DIR="$HOME/.claude/agents"
 
@@ -63,6 +63,7 @@ echo "Installing files..."
 cp "$SKILL_FILE" "$SKILL_DIR/"
 echo -e "${GREEN}✓${NC} Skill installed: $SKILL_DIR/agent-architect.md"
 
+# Copy and rename agent to standard name
 cp "$AGENT_FILE" "$AGENT_DIR/agent-architect.md"
 echo -e "${GREEN}✓${NC} Agent installed: $AGENT_DIR/agent-architect.md"
 

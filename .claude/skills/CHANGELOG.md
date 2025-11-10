@@ -22,7 +22,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Agent patterns
   - Multi-agent systems
   - Prompt engineering
-- Integration with agent-architect agent
+- **Self-contained package:** Agent included (agent-architect-agent.md)
+- Integration with agent-architect agent via Task tool
 - Research-backed decision framework
   - Chain-of-Specificity (CoS) principles
   - LIFT-COT resource management patterns

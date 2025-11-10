@@ -84,7 +84,7 @@ See [EXAMPLE-USAGE.md](EXAMPLE-USAGE.md) for detailed examples.
 ```
 agent-architect-skill/
 ├── agent-architect.md              # The skill (UI)
-├── ../agents/agent-architect.md    # The agent (core logic)
+├── agent-architect-agent.md        # The agent (core logic) - INCLUDED!
 ├── README.md                       # This file
 ├── agent-architect-README.md       # Detailed user docs
 ├── EXAMPLE-USAGE.md                # Usage examples
@@ -160,11 +160,12 @@ Claude: [Presents recommendations]
 - Doc fetching instructions
 - Agent launch orchestration
 
-**2. Agent (.claude/agents/agent-architect.md)**
-- Core architectural expertise
+**2. Agent (agent-architect-agent.md → installed as .claude/agents/agent-architect.md)**
+- Core architectural expertise (15 KB)
 - Research knowledge (CoS, LIFT-COT)
 - Anthropic best practices
 - Analysis and recommendation engine
+- **Self-contained:** Included in package, no external dependencies!
 
 ### Design Principles
 

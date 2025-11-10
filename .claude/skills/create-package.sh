@@ -26,7 +26,7 @@ echo ""
 # Check if files exist
 REQUIRED_FILES=(
     "agent-architect.md"
-    "../agents/agent-architect.md"
+    "agent-architect-agent.md"
     "README.md"
     "LICENSE"
 )
@@ -56,7 +56,9 @@ cp agent-architect.md "$PACKAGE_NAME/"
 echo "  → agent-architect.md"
 
 # Agent
-cp ../agents/agent-architect.md "$PACKAGE_NAME/agent/"
+cp agent-architect-agent.md "$PACKAGE_NAME/agent/"
+# Rename to standard agent name
+mv "$PACKAGE_NAME/agent/agent-architect-agent.md" "$PACKAGE_NAME/agent/agent-architect.md"
 echo "  → agent/agent-architect.md"
 
 # Documentation
