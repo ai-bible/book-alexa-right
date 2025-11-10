@@ -280,14 +280,13 @@ def _add_cow_file(session_name: str, file_path: str, change_type: str) -> None:
     session_path = _get_session_path(session_name)
 
     # Check if already tracked
-    if existing_entry := next(
-        (
-            cow_file
-            for cow_file in session_data["cow_files"]
-            if cow_file["path"] == file_path
-        ),
-        None,
-    ):
+    existing_entry = None
+    for cow_file in session_data["cow_files"]:
+        if cow_file["path"] == file_path:
+            existing_entry = cow_file
+            break
+
+    if existing_entry:
         # Update change_type if status changed
         old_type = existing_entry["type"]
         if old_type != change_type:
