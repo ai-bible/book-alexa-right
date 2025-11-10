@@ -217,7 +217,10 @@ def _create_session_structure(session_path: Path) -> None:
         session_path / "context" / "plot-graph",
         session_path / "acts",
         session_path / "artifacts",
-        session_path / "human-retries"
+        session_path / "human-retries",
+        session_path / "workflow-state",  # Workflow orchestration state
+        session_path / "generation-runs",  # Generation workflow artifacts
+        session_path / "planning-runs",  # Planning workflow artifacts
     ]
 
     for d in dirs:
@@ -327,6 +330,70 @@ def _add_cow_file(session_name: str, file_path: str, change_type: str) -> None:
     )
 
     _save_session_data(session_name, session_data)
+
+
+# Workflow State Management
+
+def _copy_workflow_states_to_global(session_name: str, session_path: Path) -> tuple[int, int]:
+    """Copy workflow states from session to global directory on commit.
+
+    Args:
+        session_name: Session name
+        session_path: Path to session directory
+
+    Returns:
+        Tuple of (copied_count, failed_count)
+    """
+    global_workflow_dir = WORKSPACE_PATH / "workflow-state"
+    global_workflow_dir.mkdir(parents=True, exist_ok=True)
+
+    session_workflow_dir = session_path / "workflow-state"
+
+    copied = 0
+    failed = 0
+
+    if not session_workflow_dir.exists():
+        return (copied, failed)
+
+    # Copy all workflow state files
+    import shutil
+    for state_file in session_workflow_dir.glob("*.json"):
+        if state_file.name == "index.json":
+            continue  # Skip index files
+
+        try:
+            shutil.copy2(state_file, global_workflow_dir / state_file.name)
+            copied += 1
+        except Exception:
+            failed += 1
+
+    # Copy generation-runs artifacts
+    session_gen_runs = session_path / "generation-runs"
+    global_gen_runs = WORKSPACE_PATH / "generation-runs"
+    if session_gen_runs.exists():
+        global_gen_runs.mkdir(parents=True, exist_ok=True)
+        for run_dir in session_gen_runs.iterdir():
+            if run_dir.is_dir():
+                try:
+                    shutil.copytree(run_dir, global_gen_runs / run_dir.name, dirs_exist_ok=True)
+                    copied += 1
+                except Exception:
+                    failed += 1
+
+    # Copy planning-runs artifacts
+    session_plan_runs = session_path / "planning-runs"
+    global_plan_runs = WORKSPACE_PATH / "planning-runs"
+    if session_plan_runs.exists():
+        global_plan_runs.mkdir(parents=True, exist_ok=True)
+        for run_dir in session_plan_runs.iterdir():
+            if run_dir.is_dir():
+                try:
+                    shutil.copytree(run_dir, global_plan_runs / run_dir.name, dirs_exist_ok=True)
+                    copied += 1
+                except Exception:
+                    failed += 1
+
+    return (copied, failed)
 
 
 # Formatting

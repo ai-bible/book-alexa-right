@@ -30,6 +30,8 @@ mcp = FastMCP("generation_state_mcp")
 
 # Constants
 WORKSPACE_PATH = Path("workspace")
+SESSIONS_PATH = WORKSPACE_PATH / "sessions"
+SESSION_LOCK_FILE = WORKSPACE_PATH / "session.lock"
 STATE_FILE_PATTERN = "generation-state-*.json"
 CHARACTER_LIMIT = 25000  # Maximum response size in characters
 
@@ -537,15 +539,52 @@ class LogQuestionAnswerInput(BaseModel):
 
 # Shared Utility Functions
 
+def _get_active_session() -> Optional[str]:
+    """Get active session name from session.lock.
+
+    Returns:
+        Session name or None if no active session
+    """
+    if not SESSION_LOCK_FILE.exists():
+        return None
+
+    try:
+        with open(SESSION_LOCK_FILE, 'r') as f:
+            lock_data = json.load(f)
+        return lock_data.get("active")
+    except Exception:
+        return None
+
+
 def _get_state_file_path(scene_id: str) -> Path:
     """Get path to state file for scene ID.
+
+    Checks session directory first (if active session exists), then global.
 
     Args:
         scene_id: Scene ID (4 digits)
 
     Returns:
-        Path to state file
+        Path to state file (may not exist)
     """
+    session_name = _get_active_session()
+
+    # If active session, prefer session directory
+    if session_name:
+        session_state_path = SESSIONS_PATH / session_name / f"generation-state-{scene_id}.json"
+        # Return session path if it exists, or if no global exists (for new states)
+        if session_state_path.exists():
+            return session_state_path
+
+        # Check if global exists - if so, return global for reading
+        global_state_path = WORKSPACE_PATH / f"generation-state-{scene_id}.json"
+        if global_state_path.exists():
+            return global_state_path
+
+        # Neither exists - return session path for writing (session-aware)
+        return session_state_path
+
+    # No active session - use global
     return WORKSPACE_PATH / f"generation-state-{scene_id}.json"
 
 
@@ -588,8 +627,8 @@ def _save_state_file(scene_id: str, state: Dict[str, Any]) -> None:
     """
     state_path = _get_state_file_path(scene_id)
 
-    # Ensure workspace directory exists
-    WORKSPACE_PATH.mkdir(parents=True, exist_ok=True)
+    # Ensure parent directory exists (workspace or session dir)
+    state_path.parent.mkdir(parents=True, exist_ok=True)
 
     try:
         with open(state_path, 'w', encoding='utf-8') as f:
@@ -599,16 +638,29 @@ def _save_state_file(scene_id: str, state: Dict[str, Any]) -> None:
 
 
 def _list_state_files() -> List[Path]:
-    """List all state files in workspace.
+    """List all state files in workspace (global and session).
+
+    Checks session directory first (if active), then global directory.
 
     Returns:
         List of state file paths
     """
-    if not WORKSPACE_PATH.exists():
-        return []
+    state_files = []
 
-    pattern = str(WORKSPACE_PATH / STATE_FILE_PATTERN)
-    return [Path(p) for p in glob.glob(pattern)]
+    # Check session directory first if active session exists
+    session_name = _get_active_session()
+    if session_name:
+        session_dir = SESSIONS_PATH / session_name
+        if session_dir.exists():
+            session_pattern = str(session_dir / STATE_FILE_PATTERN)
+            state_files.extend([Path(p) for p in glob.glob(session_pattern)])
+
+    # Check global directory
+    if WORKSPACE_PATH.exists():
+        global_pattern = str(WORKSPACE_PATH / STATE_FILE_PATTERN)
+        state_files.extend([Path(p) for p in glob.glob(global_pattern)])
+
+    return state_files
 
 
 def _validate_state(state: Dict[str, Any], scene_id: str) -> List[str]:

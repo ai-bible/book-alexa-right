@@ -49,7 +49,8 @@ from session_utils import (
     _create_session_structure,
     _resolve_path_cow,
     _add_cow_file,
-    _format_file_size
+    _format_file_size,
+    _copy_workflow_states_to_global
 )
 
 # Initialize MCP server
@@ -665,6 +666,9 @@ Session '{session_name}' has no modified files.
             shutil.copytree(retries_dir, archive_dir, dirs_exist_ok=True)
             retries_archived = True
 
+    # Copy workflow states to global (Phase 4 integration)
+    workflow_states_copied, workflow_states_failed = _copy_workflow_states_to_global(session_name, session_path)
+
     # Clean up session directory (Comment 5: error handling)
     try:
         shutil.rmtree(session_path)
@@ -718,6 +722,13 @@ Session '{session_name}' has no modified files.
         lines.append("")
         lines.append("📦 Human retries archived:")
         lines.append(f"   {WORKSPACE_PATH}/retries-archive/{session_name}/")
+
+    if workflow_states_copied > 0:
+        lines.append("")
+        lines.append("🔄 Workflow states committed:")
+        lines.append(f"   • Copied: {workflow_states_copied}")
+        if workflow_states_failed > 0:
+            lines.append(f"   • Failed: {workflow_states_failed}")
 
     lines.append("")
     lines.append("🗑️ Session directory removed")
