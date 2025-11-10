@@ -49,8 +49,166 @@ For specific technical requests (e.g., "Plan chapter 5 following established blu
 4. **Decide which agents to invoke** based on whether world changes, new characters, or other factors are involved
 5. **Aggregate results** from all agents into cohesive plans
 6. **Present clear options** and recommendations to the user
+7. **Track workflow state** using workflow_orchestration_mcp tools
+
+## MCP State Management (Workflow Orchestration)
+
+Planning workflow uses workflow_orchestration_mcp tools for state tracking, resume capability, and human approval checkpoints.
+
+### Available MCP Tools
+
+**Workflow Initialization:**
+- Create workflow state manually (see Phase 0 below)
+
+**State Management:**
+- `update_workflow_state(workflow_id, phase, status, artifacts)` - Update phase status
+- `get_workflow_status(workflow_id)` - Get current workflow state
+- `validate_prerequisites(workflow_id, phase)` - Validate before phase
+- `list_workflows(workflow_type="planning")` - List planning workflows
+
+**Human Approval:**
+- `approve_step(workflow_id, phase, approved, selected_variant)` - User choice in Phase 2
+
+**Recovery:**
+- `resume_workflow(workflow_id, from_step)` - Resume failed workflow
+- `cancel_workflow(workflow_id, reason)` - Cancel workflow
+
+### Workflow State Structure
+
+Workflow ID format: `planning-{level}-{context}-{timestamp}`
+
+Example: `planning-scene-act01ch02sc04-20251110-150000`
+
+State stored in:
+- Session: `workspace/sessions/{name}/workflow-state/{workflow_id}.json`
+- Global: `workspace/workflow-state/{workflow_id}.json` (after commit)
+
+### Planning Phases (5 phases)
+
+1. **Exploration** - Gather context, ask questions
+2. **Scenarios** - Generate options, predict consequences (**Human Approval Required**)
+3. **Path Planning** - Break down chosen path
+4. **Detailing** - Emotional arcs, beats, dialogue
+5. **Integration** - Integrate with storylines, analyze impact
+
+### Usage Pattern
+
+```python
+# BEFORE EACH PHASE
+result = validate_prerequisites(workflow_id, phase=N)
+if not result["can_start_phase"]:
+    return error(result["blocking_issues"])
+
+# START PHASE
+update_workflow_state(workflow_id, phase=N, status="in_progress")
+
+# [PERFORM PHASE WORK]
+
+# ON SUCCESS
+update_workflow_state(
+    workflow_id,
+    phase=N,
+    status="completed",
+    artifacts={...}
+)
+```
+
+**Phase 2 Special Handling** (Human Approval):
+```python
+# After generating scenarios
+update_workflow_state(workflow_id, phase=2, status="waiting_approval")
+
+# Present scenarios to user
+# Wait for user selection
+
+# User selects variant
+approve_step(
+    workflow_id,
+    phase=2,
+    approved=True,
+    selected_variant="A"
+)
+```
 
 ## Planning Process
+
+### Phase 0: Initialize Workflow State
+
+Before starting interactive planning:
+
+1. **Check for existing workflows**:
+   ```python
+   workflows = list_workflows(workflow_type="planning")
+   # Check for active/failed workflows
+   ```
+
+2. **If found, offer resume**:
+   - Show status and progress
+   - Ask: "Resume or start fresh?"
+   - If resume: use resume_workflow()
+   - If fresh: use cancel_workflow(), then continue
+
+3. **Create new workflow state** (after user confirms level and context):
+   ```python
+   from datetime import datetime
+   timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+   workflow_id = f"planning-{level}-{context}-{timestamp}"
+
+   # Example for scene planning:
+   workflow_id = "planning-scene-act01ch02sc04-20251110-150000"
+   ```
+
+4. **Write initial state JSON**:
+   ```json
+   {
+     "workflow_id": "planning-scene-act01ch02sc04-20251110-150000",
+     "workflow_type": "planning",
+     "session_name": "work-on-chapter-02",
+     "status": "in_progress",
+     "created_at": "2025-11-10T15:00:00Z",
+     "updated_at": "2025-11-10T15:00:00Z",
+
+     "planning": {
+       "level": "scene",
+       "context": {"act": 1, "chapter": 2, "scene": 4},
+       "current_phase": 1,
+       "total_phases": 5,
+       "phases": [
+         {"phase": 1, "name": "Exploration", "status": "pending", ...},
+         {"phase": 2, "name": "Scenarios", "status": "pending", "human_approval": {"required": true}, ...},
+         {"phase": 3, "name": "Path Planning", "status": "pending", ...},
+         {"phase": 4, "name": "Detailing", "status": "pending", ...},
+         {"phase": 5, "name": "Integration", "status": "pending", ...}
+       ],
+       "artifacts": {
+         "working_dir": "workspace/sessions/.../planning-runs/{workflow_id}"
+       }
+     }
+   }
+   ```
+
+5. **Write state file**:
+   ```python
+   import json
+   from pathlib import Path
+
+   # Determine path (session-aware)
+   active_session = get_active_session()
+   if active_session:
+       state_path = f"workspace/sessions/{active_session}/workflow-state/{workflow_id}.json"
+       working_dir = f"workspace/sessions/{active_session}/planning-runs/{workflow_id}"
+   else:
+       state_path = f"workspace/workflow-state/{workflow_id}.json"
+       working_dir = f"workspace/planning-runs/{workflow_id}"
+
+   Path(state_path).parent.mkdir(parents=True, exist_ok=True)
+   Path(working_dir).mkdir(parents=True, exist_ok=True)
+
+   with open(state_path, 'w') as f:
+       json.dump(workflow_state, f, indent=2)
+   ```
+
+6. Log: "🚀 Planning workflow initialized: {workflow_id}"
 
 ### Step 1: Determine Level
 Ask the user what they want to plan:
@@ -69,55 +227,169 @@ Based on level, ask for:
 - Key characters involved
 
 ### Step 3: Phase 1 - Exploration
-Invoke **dialogue-analyst** to ask clarifying questions.
-Invoke **context-analyzer** to analyze current world/character states.
 
-Read their outputs from `/workspace/artifacts/phase-1/`
+1. **VALIDATE & START PHASE**:
+   ```python
+   validate_prerequisites(workflow_id, phase=1)
+   update_workflow_state(workflow_id, phase=1, status="in_progress")
+   ```
 
-### Step 4: Phase 2 - Generate Scenarios
-Invoke **scenario-generator** for 3-5 development options.
-Invoke **consequence-predictor** to predict outcomes.
+2. Invoke **dialogue-analyst** to ask clarifying questions
+3. Invoke **context-analyzer** to analyze current world/character states
+4. Read outputs from working_dir or `/workspace/artifacts/phase-1/`
 
-**Conditionally invoke world-impact-analyzer** if user indicates:
-- New technologies/elements
-- Changes to existing world elements
-- Explicitly mentions "introduce new..."
+5. **COMPLETE PHASE**:
+   ```python
+   update_workflow_state(
+       workflow_id,
+       phase=1,
+       status="completed",
+       artifacts={"exploration_results": f"{working_dir}/exploration-results.md"}
+   )
+   ```
 
-Read outputs from `/workspace/artifacts/phase-2/`
+### Step 4: Phase 2 - Generate Scenarios (HUMAN APPROVAL)
 
-Present options to user and get their choice.
+1. **VALIDATE & START PHASE**:
+   ```python
+   validate_prerequisites(workflow_id, phase=2)
+   update_workflow_state(workflow_id, phase=2, status="in_progress")
+   ```
+
+2. Invoke **scenario-generator** for 3-5 development options
+3. Invoke **consequence-predictor** to predict outcomes
+
+4. **Conditionally invoke world-impact-analyzer** if user indicates:
+   - New technologies/elements
+   - Changes to existing world elements
+   - Explicitly mentions "introduce new..."
+
+5. Read outputs from working_dir or `/workspace/artifacts/phase-2/`
+
+6. **SET WAITING FOR APPROVAL**:
+   ```python
+   update_workflow_state(workflow_id, phase=2, status="waiting_approval")
+   ```
+
+7. Present options to user and wait for choice
+
+8. **USER APPROVAL**:
+   ```python
+   # After user selects variant (e.g., "A")
+   approve_step(
+       workflow_id,
+       phase=2,
+       approved=True,
+       selected_variant="A"
+   )
+   # This automatically marks phase 2 as completed
+   ```
 
 ### Step 5: Phase 3 - Path Planning
-Invoke **arc-planner** to break chosen path into events/scenes.
-Invoke **dependency-mapper** to identify dependencies.
 
-Read outputs from `/workspace/artifacts/phase-3/`
+1. **VALIDATE & START PHASE**:
+   ```python
+   validate_prerequisites(workflow_id, phase=3)
+   update_workflow_state(workflow_id, phase=3, status="in_progress")
+   ```
+
+2. Invoke **arc-planner** to break chosen path into events/scenes
+3. Invoke **dependency-mapper** to identify dependencies
+4. Read outputs from working_dir or `/workspace/artifacts/phase-3/`
+
+5. **COMPLETE PHASE**:
+   ```python
+   update_workflow_state(
+       workflow_id,
+       phase=3,
+       status="completed",
+       artifacts={"path_plan": f"{working_dir}/path-plan.md"}
+   )
+   ```
 
 ### Step 6: Phase 4 - Detailing
-Invoke **emotional-arc-designer** for character emotional arcs.
-Invoke **beat-planner** for scene beats.
 
-**Conditionally invoke character-knowledge-updater** if characters learn new information.
+1. **VALIDATE & START PHASE**:
+   ```python
+   validate_prerequisites(workflow_id, phase=4)
+   update_workflow_state(workflow_id, phase=4, status="in_progress")
+   ```
 
-Read outputs from `/workspace/artifacts/phase-4/`
+2. Invoke **emotional-arc-designer** for character emotional arcs
+3. Invoke **beat-planner** for scene beats
+
+4. **Conditionally invoke character-knowledge-updater** if characters learn new information
+5. Read outputs from working_dir or `/workspace/artifacts/phase-4/`
+
+6. **COMPLETE PHASE**:
+   ```python
+   update_workflow_state(
+       workflow_id,
+       phase=4,
+       status="completed",
+       artifacts={"detailed_plans": f"{working_dir}/detailed-plans.md"}
+   )
+   ```
 
 ### Step 7: Phase 5 - Integration
-Invoke **storyline-integrator** to integrate with storylines.
-Invoke **impact-analyzer** for overall impact assessment.
 
-Read outputs from `/workspace/artifacts/phase-5/`
+1. **VALIDATE & START PHASE**:
+   ```python
+   validate_prerequisites(workflow_id, phase=5)
+   update_workflow_state(workflow_id, phase=5, status="in_progress")
+   ```
+
+2. Invoke **storyline-integrator** to integrate with storylines
+3. Invoke **impact-analyzer** for overall impact assessment
+4. Read outputs from working_dir or `/workspace/artifacts/phase-5/`
+
+5. **COMPLETE PHASE**:
+   ```python
+   update_workflow_state(
+       workflow_id,
+       phase=5,
+       status="completed",
+       artifacts={
+           "storyline_integration": f"{working_dir}/storyline-integration.md",
+           "impact_analysis": f"{working_dir}/impact-analysis.md"
+       }
+   )
+   ```
 
 ### Step 8: Synthesize Final Plan
-Collect all artifacts and create the appropriate final plan format:
 
-**For Scene Planning** → Scene Blueprint:
-Save to: `/acts/act-[N]/chapters/chapter-[M]/scenes/scene-[K]-blueprint.md`
+1. Collect all artifacts from phases 1-5
+2. Create the appropriate final plan format:
 
-**For Chapter Planning** → Chapter Plan:
-Save to: `/acts/act-[N]/chapters/chapter-[M]/plan.md`
+   **For Scene Planning** → Scene Blueprint:
+   Save to: `/acts/act-[N]/chapters/chapter-[M]/scenes/scene-[K]-blueprint.md`
 
-**For Act Planning** → Strategic Plan:
-Save to: `/acts/act-[N]/strategic-plan.md`
+   **For Chapter Planning** → Chapter Plan:
+   Save to: `/acts/act-[N]/chapters/chapter-[M]/plan.md`
+
+   **For Act Planning** → Strategic Plan:
+   Save to: `/acts/act-[N]/strategic-plan.md`
+
+3. **COMPLETE WORKFLOW**:
+   ```python
+   update_workflow_state(
+       workflow_id,
+       phase=5,
+       status="completed",
+       artifacts={
+           "final_plan": f"{output_file_path}",
+           "all_phases": {
+               "phase_1": f"{working_dir}/exploration-results.md",
+               "phase_2": f"{working_dir}/scenarios.md",
+               "phase_3": f"{working_dir}/path-plan.md",
+               "phase_4": f"{working_dir}/detailed-plans.md",
+               "phase_5": f"{working_dir}/integration-results.md"
+           }
+       }
+   )
+   ```
+
+4. Log: "✅ Planning workflow completed: {workflow_id}"
 
 ### Step 9: Present to User
 Summarize:

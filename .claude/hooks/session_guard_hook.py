@@ -17,8 +17,19 @@ FAILURE MODE: Graceful - logs error, exits with code 1 to block operation
 import sys
 import json
 import os
+import logging
 from pathlib import Path
 from datetime import datetime, timezone
+
+# Configure logging for error tracking (Comment 6)
+logging.basicConfig(
+    level=logging.ERROR,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('workspace/hooks-errors.log', mode='a'),
+        logging.StreamHandler(sys.stderr)
+    ]
+)
 
 
 def main():
@@ -117,7 +128,7 @@ def _is_process_alive(pid: int) -> bool:
 
 
 def _mark_crashed(session_name: str):
-    """Mark session as CRASHED in session.json."""
+    """Mark session as CRASHED in session.json (Comment 6: with logging)."""
     try:
         session_file = Path(f"workspace/sessions/{session_name}/session.json")
         if session_file.exists():
@@ -129,9 +140,9 @@ def _mark_crashed(session_name: str):
 
             with open(session_file, 'w') as f:
                 json.dump(session_data, f, indent=2)
-    except Exception:
-        # Best effort - don't fail if can't mark crashed
-        pass
+    except Exception as e:
+        # Best effort - log error but don't fail hook (Comment 6)
+        logging.error(f"Failed to mark session '{session_name}' as crashed: {e}", exc_info=True)
 
 
 if __name__ == "__main__":

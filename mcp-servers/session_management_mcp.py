@@ -16,419 +16,52 @@ State files:
 - workspace/sessions/{name}/session.json - Session metadata + CoW tracking
 """
 
-from typing import Optional, List, Dict, Any
-from enum import Enum
 from pathlib import Path
 from datetime import datetime, timezone
-import json
-import os
 import shutil
-import glob
+import logging
 
-from pydantic import BaseModel, Field, field_validator, ConfigDict
 from mcp.server.fastmcp import FastMCP
+
+# Configure logger
+logger = logging.getLogger(__name__)
+
+# Import models (Enums + Pydantic models)
+from session_models import (
+    SessionStatus,
+    ChangeType,
+    CreateSessionInput,
+    SwitchSessionInput,
+    CommitSessionInput,
+    CancelSessionInput,
+    ResolvePathInput,
+    RecordHumanRetryInput
+)
+
+# Import utilities (constants + functions)
+from session_utils import (
+    WORKSPACE_PATH,
+    SESSIONS_PATH,
+    SESSION_LOCK_FILE,
+    _get_session_lock,
+    _update_session_lock,
+    _clear_session_lock,
+    _get_session_path,
+    _load_session_data,
+    _save_session_data,
+    _get_active_session,
+    _create_session_structure,
+    _resolve_path_cow,
+    _add_cow_file,
+    _format_file_size,
+    _copy_workflow_states_to_global
+)
 
 # Initialize MCP server
 mcp = FastMCP("session_management_mcp")
 
-# Constants
-WORKSPACE_PATH = Path("workspace")
-SESSIONS_PATH = WORKSPACE_PATH / "sessions"
-SESSION_LOCK_FILE = WORKSPACE_PATH / "session.lock"
 
-
-# Enums
-class SessionStatus(str, Enum):
-    """Possible session statuses."""
-    ACTIVE = "ACTIVE"
-    INACTIVE = "INACTIVE"
-    CRASHED = "CRASHED"
-
-
-class ChangeType(str, Enum):
-    """Types of file changes."""
-    MODIFIED = "modified"
-    CREATED = "created"
-    DELETED = "deleted"
-
-
-# Pydantic Models
-
-class CreateSessionInput(BaseModel):
-    """Input model for create_session tool."""
-    model_config = ConfigDict(
-        str_strip_whitespace=True,
-        validate_assignment=True,
-        extra='forbid'
-    )
-
-    name: str = Field(
-        ...,
-        description="Session name (e.g., 'work-on-chapter-01', 'experimental-scene-0102')",
-        min_length=1,
-        max_length=100,
-        pattern=r"^[a-zA-Z0-9_-]+$"
-    )
-    description: str = Field(
-        default="",
-        description="Optional description of session purpose",
-        max_length=500
-    )
-
-
-class SwitchSessionInput(BaseModel):
-    """Input model for switch_session tool."""
-    model_config = ConfigDict(
-        str_strip_whitespace=True,
-        validate_assignment=True,
-        extra='forbid'
-    )
-
-    name: str = Field(
-        ...,
-        description="Session name to switch to",
-        min_length=1,
-        max_length=100
-    )
-
-
-class CommitSessionInput(BaseModel):
-    """Input model for commit_session tool."""
-    model_config = ConfigDict(
-        str_strip_whitespace=True,
-        validate_assignment=True,
-        extra='forbid'
-    )
-
-    name: Optional[str] = Field(
-        default=None,
-        description="Session name to commit (None = active session)",
-        max_length=100
-    )
-    force: bool = Field(
-        default=False,
-        description="Force commit even if warnings present"
-    )
-
-
-class CancelSessionInput(BaseModel):
-    """Input model for cancel_session tool."""
-    model_config = ConfigDict(
-        str_strip_whitespace=True,
-        validate_assignment=True,
-        extra='forbid'
-    )
-
-    name: Optional[str] = Field(
-        default=None,
-        description="Session name to cancel (None = active session)",
-        max_length=100
-    )
-    backup_retries: bool = Field(
-        default=True,
-        description="Backup human retries before cancelling"
-    )
-
-
-class ResolvePathInput(BaseModel):
-    """Input model for resolve_path tool."""
-    model_config = ConfigDict(
-        str_strip_whitespace=True,
-        validate_assignment=True,
-        extra='forbid'
-    )
-
-    path: str = Field(
-        ...,
-        description="Relative path to resolve (e.g., 'acts/act-1/chapters/chapter-01/plan.md')",
-        min_length=1,
-        max_length=500
-    )
-
-
-class RecordHumanRetryInput(BaseModel):
-    """Input model for record_human_retry tool."""
-    model_config = ConfigDict(
-        str_strip_whitespace=True,
-        validate_assignment=True,
-        extra='forbid'
-    )
-
-    file_path: str = Field(
-        ...,
-        description="Path to file being retried (relative or just filename)",
-        min_length=1,
-        max_length=500
-    )
-    reason: str = Field(
-        ...,
-        description="Reason for human retry",
-        min_length=1,
-        max_length=2000
-    )
-    auto_detected: bool = Field(
-        default=False,
-        description="True if AI detected retry, False if explicit /retry command"
-    )
-
-
-# Utility Functions
-
-def _get_session_lock() -> Optional[Dict[str, Any]]:
-    """Get current session lock data.
-
-    Returns:
-        Session lock dict or None if no lock exists
-    """
-    if not SESSION_LOCK_FILE.exists():
-        return None
-
-    try:
-        with open(SESSION_LOCK_FILE, 'r') as f:
-            return json.load(f)
-    except Exception:
-        return None
-
-
-def _update_session_lock(session_name: str) -> None:
-    """Update session.lock with new active session.
-
-    Args:
-        session_name: Name of session to activate
-    """
-    WORKSPACE_PATH.mkdir(parents=True, exist_ok=True)
-
-    lock_data = {
-        "active": session_name,
-        "updated_at": datetime.now(timezone.utc).isoformat(),
-        "pid": os.getpid(),
-        "user": os.environ.get("USER", "unknown")
-    }
-
-    with open(SESSION_LOCK_FILE, 'w') as f:
-        json.dump(lock_data, f, indent=2)
-
-
-def _clear_session_lock() -> None:
-    """Clear session.lock (no active session)."""
-    if SESSION_LOCK_FILE.exists():
-        SESSION_LOCK_FILE.unlink()
-
-
-def _get_session_path(name: str) -> Path:
-    """Get path to session directory.
-
-    Args:
-        name: Session name
-
-    Returns:
-        Path to session directory
-    """
-    return SESSIONS_PATH / name
-
-
-def _load_session_data(name: str) -> Dict[str, Any]:
-    """Load session.json data.
-
-    Args:
-        name: Session name
-
-    Returns:
-        Session data dict
-
-    Raises:
-        FileNotFoundError: If session doesn't exist
-        ValueError: If session.json is corrupted
-    """
-    session_path = _get_session_path(name)
-    session_file = session_path / "session.json"
-
-    if not session_file.exists():
-        raise FileNotFoundError(f"Session '{name}' not found")
-
-    try:
-        with open(session_file, 'r') as f:
-            return json.load(f)
-    except json.JSONDecodeError as e:
-        raise ValueError(f"Corrupted session.json for '{name}': {e}")
-
-
-def _save_session_data(name: str, data: Dict[str, Any]) -> None:
-    """Save session.json data.
-
-    Args:
-        name: Session name
-        data: Session data to save
-    """
-    session_path = _get_session_path(name)
-    session_file = session_path / "session.json"
-
-    with open(session_file, 'w') as f:
-        json.dump(data, f, indent=2, ensure_ascii=False)
-
-
-def _get_active_session() -> Optional[Dict[str, Any]]:
-    """Get active session information.
-
-    Returns:
-        {
-            "name": str,
-            "path": str,
-            "context_path": str,
-            "acts_path": str,
-            "status": str,
-            "data": dict  # Full session.json data
-        }
-        or None if no active session
-    """
-    lock = _get_session_lock()
-    if not lock:
-        return None
-
-    session_name = lock.get("active")
-    if not session_name:
-        return None
-
-    session_path = _get_session_path(session_name)
-    if not session_path.exists():
-        return None
-
-    try:
-        session_data = _load_session_data(session_name)
-    except Exception:
-        return None
-
-    return {
-        "name": session_name,
-        "path": str(session_path),
-        "context_path": str(session_path / "context"),
-        "acts_path": str(session_path / "acts"),
-        "status": session_data.get("status", "UNKNOWN"),
-        "data": session_data
-    }
-
-
-def _create_session_structure(session_path: Path) -> None:
-    """Create empty session directory structure (CoW).
-
-    Args:
-        session_path: Path to session directory
-    """
-    # Create directory structure WITHOUT copying files
-    dirs = [
-        session_path / "context" / "characters",
-        session_path / "context" / "world-bible",
-        session_path / "context" / "canon-levels",
-        session_path / "context" / "plot-graph",
-        session_path / "acts",
-        session_path / "artifacts",
-        session_path / "human-retries"
-    ]
-
-    for d in dirs:
-        d.mkdir(parents=True, exist_ok=True)
-
-
-def _resolve_path_cow(rel_path: str, session_name: str) -> Dict[str, Any]:
-    """Resolve path with Copy-on-Write logic.
-
-    Args:
-        rel_path: Relative path (e.g., "acts/act-1/.../scene-0101.md")
-        session_name: Session name
-
-    Returns:
-        {
-            "resolved_path": str,  # Actual path to use
-            "source": str,         # "session" | "global"
-            "exists": bool,
-            "modified_in_session": bool
-        }
-    """
-    session_path = _get_session_path(session_name)
-    session_file_path = session_path / rel_path
-    global_file_path = Path(rel_path)
-
-    # Check if file exists in session (modified)
-    if session_file_path.exists():
-        return {
-            "resolved_path": str(session_file_path),
-            "source": "session",
-            "exists": True,
-            "modified_in_session": True
-        }
-
-    # File not in session, use global
-    return {
-        "resolved_path": str(global_file_path),
-        "source": "global",
-        "exists": global_file_path.exists(),
-        "modified_in_session": False
-    }
-
-
-def _add_cow_file(session_name: str, file_path: str, change_type: str) -> None:
-    """Add file to session CoW tracking.
-
-    Args:
-        session_name: Session name
-        file_path: Relative path to file
-        change_type: "modified" | "created" | "deleted"
-    """
-    session_data = _load_session_data(session_name)
-
-    # Check if already tracked
-    existing_paths = [f["path"] for f in session_data["cow_files"]]
-    if file_path in existing_paths:
-        return  # Already tracked
-
-    # Get file size
-    size_bytes = 0
-    if os.path.exists(file_path):
-        size_bytes = os.path.getsize(file_path)
-
-    # Add to cow_files
-    cow_entry = {
-        "path": file_path,
-        "type": change_type,
-        "copied_at": datetime.now(timezone.utc).isoformat(),
-        "size_bytes": size_bytes
-    }
-
-    session_data["cow_files"].append(cow_entry)
-
-    # Update changes list
-    if file_path not in session_data["changes"][change_type]:
-        session_data["changes"][change_type].append(file_path)
-
-    # Update stats
-    session_data["stats"]["total_files_changed"] = len(session_data["cow_files"])
-    session_data["stats"]["session_size_bytes"] = sum(
-        f["size_bytes"] for f in session_data["cow_files"]
-    )
-
-    _save_session_data(session_name, session_data)
-
-
-def _format_file_size(size_bytes: int) -> str:
-    """Format file size in human-readable format.
-
-    Args:
-        size_bytes: Size in bytes
-
-    Returns:
-        Formatted string (e.g., "2.3 MB", "450 KB")
-    """
-    if size_bytes < 1024:
-        return f"{size_bytes} B"
-    elif size_bytes < 1024 * 1024:
-        return f"{size_bytes / 1024:.1f} KB"
-    elif size_bytes < 1024 * 1024 * 1024:
-        return f"{size_bytes / (1024 * 1024):.1f} MB"
-    else:
-        return f"{size_bytes / (1024 * 1024 * 1024):.1f} GB"
-
-
-# MCP Tools
+# MCP Tools (handlers remain in main file due to decorator complexity)
 
 @mcp.tool(
     name="get_active_session",
@@ -466,9 +99,9 @@ async def get_active_session() -> str:
         f"**Description**: {data.get('description', 'No description')}",
         "",
         "📊 **Changes** (uncommitted):",
-        f"   • Modified: {len(data['changes']['modified'])} files",
-        f"   • Created: {len(data['changes']['created'])} files",
-        f"   • Deleted: {len(data['changes']['deleted'])} files",
+        f"   • Modified: {len(data['changes'][ChangeType.MODIFIED.value])} files",
+        f"   • Created: {len(data['changes'][ChangeType.CREATED.value])} files",
+        f"   • Deleted: {len(data['changes'][ChangeType.DELETED.value])} files",
         "",
         f"💾 **Session Size**: {_format_file_size(stats.get('session_size_bytes', 0))}",
         "",
@@ -479,12 +112,13 @@ async def get_active_session() -> str:
     ]
 
     # Human retries
-    retries = data.get("human_retries", [])
-    if retries:
-        lines.append("")
-        lines.append(f"🔄 **Human Retries**: {len(retries)}")
-        for retry in retries[-3:]:  # Show last 3
-            lines.append(f"   • {retry['file']}: Retry #{retry['retry_number']} - {retry['reason'][:50]}...")
+    if retries := data.get("human_retries", []):
+        lines.extend([
+            "",
+            f"🔄 **Human Retries**: {len(retries)}",
+            *[f"   • {retry['file']}: Retry #{retry['retry_number']} - {retry['reason'][:50]}..."
+              for retry in retries[-3:]]  # Show last 3
+        ])
 
     return "\n".join(lines)
 
@@ -533,9 +167,9 @@ async def create_session(params: CreateSessionInput) -> str:
         "status": SessionStatus.ACTIVE.value,
         "cow_files": [],
         "changes": {
-            "modified": [],
-            "created": [],
-            "deleted": []
+            ChangeType.MODIFIED.value: [],
+            ChangeType.CREATED.value: [],
+            ChangeType.DELETED.value: []
         },
         "human_retries": [],
         "stats": {
@@ -793,22 +427,20 @@ No sessions found.
     lines.append("")
 
     if active_name:
-        lines.append(f"🔒 Active: {active_name}")
-        lines.append("")
+        lines.extend([f"🔒 Active: {active_name}", ""])
 
     # Show crashed sessions if any
-    crashed = [s for s in sessions if s["status"] == SessionStatus.CRASHED.value]
-    if crashed:
+    if crashed := [s for s in sessions if s["status"] == SessionStatus.CRASHED.value]:
         lines.append(f"⚠️ Crashed sessions ({len(crashed)}):")
-        for s in crashed:
-            lines.append(f"   • {s['name']}")
-            lines.append("     Action required: /session cancel <name>")
+        lines.extend([f"   • {s['name']}\n     Action required: /session cancel <name>" for s in crashed])
         lines.append("")
 
-    lines.append("💡 Commands:")
-    lines.append("   - Switch: /session switch <name>")
-    lines.append("   - Commit: /session commit")
-    lines.append("   - Cancel: /session cancel")
+    lines.extend([
+        "💡 Commands:",
+        "   - Switch: /session switch <name>",
+        "   - Commit: /session commit",
+        "   - Cancel: /session cancel"
+    ])
 
     return "\n".join(lines)
 
@@ -873,25 +505,27 @@ Error: {str(e)}
     if prev_name:
         lines.append(f"From: {prev_name}")
 
-    lines.append(f"To:   {session_name}")
-    lines.append("")
-    lines.append("📂 Active Session Directory:")
-    lines.append(f"   {session_path}/")
-    lines.append("")
+    lines.extend([
+        f"To:   {session_name}",
+        "",
+        "📂 Active Session Directory:",
+        f"   {session_path}/",
+        ""
+    ])
 
     # Show session stats
     stats = session_data.get("stats", {})
-    lines.append("📊 Progress:")
-    lines.append(f"   • Modified files: {len(session_data['changes']['modified'])}")
-    lines.append(f"   • Created files: {len(session_data['changes']['created'])}")
-    lines.append(f"   • Session size: {_format_file_size(stats.get('session_size_bytes', 0))}")
+    lines.extend([
+        "📊 Progress:",
+        f"   • Modified files: {len(session_data['changes'][ChangeType.MODIFIED.value])}",
+        f"   • Created files: {len(session_data['changes'][ChangeType.CREATED.value])}",
+        f"   • Session size: {_format_file_size(stats.get('session_size_bytes', 0))}"
+    ])
 
-    retries = len(session_data.get("human_retries", []))
-    if retries > 0:
+    if retries := len(session_data.get("human_retries", [])):
         lines.append(f"   • Human retries: {retries}")
 
-    lines.append("")
-    lines.append("💡 Resume work or commit when ready")
+    lines.extend(["", "💡 Resume work or commit when ready"])
 
     return "\n".join(lines)
 
@@ -952,9 +586,9 @@ Session '{session_name}' has no modified files.
             "📊 Changes to be committed:"
         ]
 
-        modified = session_data["changes"]["modified"]
-        created = session_data["changes"]["created"]
-        deleted = session_data["changes"]["deleted"]
+        modified = session_data["changes"][ChangeType.MODIFIED.value]
+        created = session_data["changes"][ChangeType.CREATED.value]
+        deleted = session_data["changes"][ChangeType.DELETED.value]
 
         if modified:
             lines.append(f"\n   Modified files ({len(modified)}):")
@@ -990,13 +624,31 @@ Session '{session_name}' has no modified files.
     # Commit: Copy CoW files from session to global
     copied_files = []
     failed_files = []
+    deleted_files = []
+    archived_files = []
 
     for cow_file in session_data["cow_files"]:
         file_path = cow_file["path"]
+        file_type = cow_file.get("type", ChangeType.MODIFIED.value)
         session_file = session_path / file_path
         global_file = Path(file_path)
 
         try:
+            # Handle deleted files - archive before deleting
+            if file_type == ChangeType.DELETED.value:
+                # Archive before deleting
+                timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+                archive_dir = WORKSPACE_PATH / "deleted-archive" / session_name / timestamp
+                archive_file = archive_dir / file_path
+                archive_file.parent.mkdir(parents=True, exist_ok=True)
+
+                if global_file.exists():
+                    shutil.copy2(global_file, archive_file)
+                    archived_files.append(file_path)
+                    global_file.unlink()
+                    deleted_files.append(file_path)
+                continue
+
             # Create parent directory if needed
             global_file.parent.mkdir(parents=True, exist_ok=True)
 
@@ -1018,8 +670,16 @@ Session '{session_name}' has no modified files.
             shutil.copytree(retries_dir, archive_dir, dirs_exist_ok=True)
             retries_archived = True
 
+    # Copy workflow states to global (Phase 4 integration)
+    workflow_states_copied, workflow_states_failed = _copy_workflow_states_to_global(session_name, session_path)
+
     # Clean up session directory
-    shutil.rmtree(session_path)
+    try:
+        shutil.rmtree(session_path)
+    except Exception as e:
+        # Log error but don't fail commit - session data already copied
+        logger.error(f"Failed to clean up session directory '{session_path}': {e}")
+        failed_files.append((f"session directory cleanup: {session_path}", str(e)))
 
     # Clear session.lock if this was active session
     lock = _get_session_lock()
@@ -1043,6 +703,20 @@ Session '{session_name}' has no modified files.
     else:
         lines.append("   (none)")
 
+    if deleted_files:
+        lines.append("")
+        lines.append("🗑️ Files deleted from global:")
+        for f in deleted_files[:10]:
+            lines.append(f"   ✓ {f}")
+        if len(deleted_files) > 10:
+            lines.append(f"   ... and {len(deleted_files) - 10} more")
+
+    if archived_files:
+        lines.append("")
+        lines.append("📦 Deleted files archived:")
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+        lines.append(f"   {WORKSPACE_PATH}/deleted-archive/{session_name}/{timestamp}/")
+
     if failed_files:
         lines.append("")
         lines.append("⚠️ Failed to copy:")
@@ -1053,6 +727,13 @@ Session '{session_name}' has no modified files.
         lines.append("")
         lines.append("📦 Human retries archived:")
         lines.append(f"   {WORKSPACE_PATH}/retries-archive/{session_name}/")
+
+    if workflow_states_copied > 0:
+        lines.append("")
+        lines.append("🔄 Workflow states committed:")
+        lines.append(f"   • Copied: {workflow_states_copied}")
+        if workflow_states_failed > 0:
+            lines.append(f"   • Failed: {workflow_states_failed}")
 
     lines.append("")
     lines.append("🗑️ Session directory removed")
@@ -1103,7 +784,14 @@ async def cancel_session(params: CancelSessionInput) -> str:
     try:
         session_data = _load_session_data(session_name)
     except Exception:
-        session_data = {"human_retries": [], "changes": {"modified": [], "created": [], "deleted": []}}
+        session_data = {
+            "human_retries": [],
+            "changes": {
+                ChangeType.MODIFIED.value: [],
+                ChangeType.CREATED.value: [],
+                ChangeType.DELETED.value: []
+            }
+        }
 
     # Backup human retries if requested
     retries_backed_up = False
@@ -1143,15 +831,20 @@ async def cancel_session(params: CancelSessionInput) -> str:
         ""
     ]
 
+    # Comment 15: merge list appends
     if retries_backed_up:
-        lines.append("📦 Human retries backed up:")
-        lines.append(f"   {backup_dir}/")
-        lines.append("")
+        lines.extend([
+            "📦 Human retries backed up:",
+            f"   {backup_dir}/",
+            ""
+        ])
 
-    lines.append("🗑️ Session directory removed")
-    lines.append("🔓 Session lock cleared")
-    lines.append("")
-    lines.append("💡 Global files (context/, acts/) unchanged")
+    lines.extend([
+        "🗑️ Session directory removed",
+        "🔓 Session lock cleared",
+        "",
+        "💡 Global files (context/, acts/) unchanged"
+    ])
 
     return "\n".join(lines)
 

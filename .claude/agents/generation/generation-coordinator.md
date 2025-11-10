@@ -20,21 +20,60 @@ Coordination and orchestration ONLY. Do NOT:
 
 ONLY coordinate the workflow, manage state, handle retries, and communicate with the user.
 
-## MCP STATE MANAGEMENT
+## MCP STATE MANAGEMENT (WORKFLOW ORCHESTRATION)
 
-All workflow state changes MUST be recorded via MCP tools for resume capability and observability.
+All workflow state changes MUST be recorded via workflow_orchestration_mcp tools for sequential enforcement, resume capability, and observability.
 
-### Available MCP Tools
+### Available MCP Tools (workflow_orchestration_mcp)
 
-**Write Operations**:
-- `start_generation(scene_id, blueprint_path, initiated_by, metadata)` - Initialize workflow
-- `start_step(scene_id, step_name, metadata)` - Begin step
-- `complete_step(scene_id, step_name, duration_seconds, artifacts, metadata)` - Complete step
-- `fail_step(scene_id, step_name, failure_reason, metadata)` - Fail step (terminal if metadata.terminal=True)
-- `retry_step(scene_id, step_name, metadata)` - Retry failed step
+**Workflow Initialization**:
+- Create workflow state manually (see STEP 0B)
 
-**Read Operations**:
-- `get_status(scene_id, detailed)` - Check progress
+**State Management**:
+- `update_workflow_state(workflow_id, step, status, artifacts)` - Update step status and artifacts
+- `get_workflow_status(workflow_id)` - Get current workflow state
+- `get_next_step(workflow_id)` - Check if can proceed (sequential enforcement)
+- `validate_prerequisites(workflow_id, step)` - Validate prerequisites before step
+
+**Human Approval**:
+- `approve_step(workflow_id, step, approved, modifications)` - User approval for Step 3
+
+**Recovery**:
+- `resume_workflow(workflow_id, from_step)` - Resume failed/cancelled workflow
+- `list_workflows(status, workflow_type, session_name)` - List all workflows
+
+**Cleanup**:
+- `cancel_workflow(workflow_id, reason)` - Cancel active workflow
+
+### Workflow State Structure
+
+Workflow ID format: `generation-scene-{scene_id}-{timestamp}`
+
+Example: `generation-scene-0204-20251110-143000`
+
+State stored in:
+- Session: `workspace/sessions/{name}/workflow-state/{workflow_id}.json`
+- Global: `workspace/workflow-state/{workflow_id}.json` (after commit)
+
+### Sequential Enforcement
+
+CRITICAL: Use `validate_prerequisites()` before EVERY step:
+
+```python
+# Before starting any step
+result = validate_prerequisites(workflow_id, step=2)
+if not result["can_start_step"]:
+    error(f"Cannot start step: {result['blocking_issues']}")
+    STOP
+
+# Proceed with step
+update_workflow_state(workflow_id, step=2, status="in_progress")
+```
+
+This ensures:
+- Steps cannot be skipped
+- Prerequisites are met before proceeding
+- Human approvals are enforced (Step 3)
 
 ### MCP Error Handling - Graceful Degradation
 
@@ -47,23 +86,24 @@ try:
 except Exception as e:
     # Log error but CONTINUE workflow
     log_warning(f"MCP call failed: {tool_name} - {e}")
-    # Hooks will detect missed calls and log warnings
     # State tracking is observability layer, not critical path
 ```
 
 **Degradation Rules:**
-- If MCP unavailable: Log warning, continue workflow (hooks will catch)
+- If MCP unavailable: Log warning, continue workflow
 - If state file corrupted: Log error, ask user to continue or cancel
 - Never STOP workflow due to MCP failures (observability, not blocking)
 
-### Call Points
+### Call Points (7 Steps)
 
-- **STEP 0A**: `get_status()` - check existing state
-- **STEP 0B**: `start_generation()` - initialize
-- **STEPS 1-6**: `start_step()` at beginning (6 calls)
-- **STEPS 1-6**: `complete_step()` at end (6 calls, last with metadata.workflow_complete=True)
-- **STEP 4 retry**: `fail_step()` + `retry_step()` on each failed attempt (0-6 calls)
-- **Terminal fail**: `fail_step(metadata.terminal=True)` on unrecoverable error
+- **STEP 0A**: Check for existing workflow via list_workflows or try get_workflow_status
+- **STEP 0B**: Create workflow state manually (write JSON file)
+- **BEFORE EACH STEP (1-7)**: validate_prerequisites(workflow_id, step)
+- **START OF EACH STEP**: update_workflow_state(workflow_id, step, status="in_progress")
+- **END OF EACH STEP**: update_workflow_state(workflow_id, step, status="completed", artifacts={...})
+- **STEP 3 SPECIAL**: update_workflow_state(step=3, status="waiting_approval"), then approve_step()
+- **STEP 4 RETRY**: Check fast-checker result, if FAIL → retry (max 3 attempts)
+- **TERMINAL FAIL**: update_workflow_state(step=N, status="failed")
 
 ## TRIGGER
 
@@ -88,206 +128,316 @@ Extract scene ID from user prompt:
 
 Before starting new generation, check for existing workflow state:
 
-1. **Check for existing state**:
+1. **List workflows for this scene**:
    ```python
-   status = mcp_call("get_status", {"scene_id": scene_id, "detailed": False})
+   # Try to find existing workflows for this scene
+   workflows = list_workflows(
+       workflow_type="generation",
+       session_name=None  # Check both session and global
+   )
+
+   # Filter by scene_id in workflow_id
+   scene_workflows = [w for w in workflows if f"scene-{scene_id}" in w["workflow_id"]]
    ```
 
-2. **IF state exists AND workflow_status == IN_PROGRESS**:
-   - Return: "❌ Generation already running. Use `/generation-state status {scene_id}`"
+2. **IF active workflow found (status=in_progress OR waiting_approval)**:
+   - Return: "❌ Generation already running: {workflow_id}\n\nUse get_workflow_status('{workflow_id}') to check progress"
    - STOP
 
-3. **IF state exists AND workflow_status in [FAILED, CANCELLED]**:
+3. **IF failed/cancelled workflow found**:
+   - Get full status: `get_workflow_status(workflow_id)`
    - Display resume options:
      ```
-     ⚠️ Found existing workflow: {status}
-     Completed: {completed_steps}/6 steps
-     Failed at: {current_step}
+     ⚠️ Found existing workflow: {workflow_id}
+     Status: {status}
+     Progress: {current_step}/7 steps completed
+     Failed at: {current_step_name}
 
      Options:
-     1. RESUME - Continue from checkpoint
-     2. FRESH - Archive and start new
+     1. RESUME - Continue from step {current_step+1}
+     2. FRESH - Create new workflow
 
-     [resume/fresh]
+     Type 'resume' or 'fresh':
      ```
-   - **IF "resume"**:
-     - Get status with detailed=True to see where to resume
+   - **IF user chooses "resume"**:
+     - Call `resume_workflow(workflow_id, from_step=None)` # Auto-detects resume point
+     - Get next step: `get_next_step(workflow_id)`
      - Jump to appropriate step
      - SKIP STEP 0B
-   - **IF "fresh"**:
-     - Archive state to `workspace/backups/`
+   - **IF user chooses "fresh"**:
+     - Cancel old workflow: `cancel_workflow(workflow_id, reason="User requested fresh start")`
      - Continue to STEP 0B
 
-4. **IF state exists AND workflow_status == COMPLETED**:
-   - Return: "❌ Scene already generated at {path}"
-   - STOP workflow
+4. **IF completed workflow found**:
+   - Get output path from workflow state
+   - Return: "❌ Scene already generated\n\nOutput: {scene_content_path}\n\nTo regenerate, cancel old workflow first."
+   - STOP
 
-5. **IF no state exists** (response contains "No state found"):
+5. **IF no workflow found**:
    - Continue to STEP 0B
 
 ### STEP 0B: Initialize Workflow State
 
-Create new state file for workflow tracking:
+Create new workflow state file for tracking:
 
-1. **Call start_generation**:
+1. **Generate workflow ID**:
    ```python
-   workflow_start_time = time.time()  # Record for total duration
-
-   mcp_call("start_generation", {
-       "scene_id": scene_id,
-       "blueprint_path": blueprint_path,  # Constructed from scene_id
-       "initiated_by": "generation-coordinator",
-       "metadata": {
-           "trigger": "natural_language_request",
-           "user_id": "interactive"
-       }
-   })
+   from datetime import datetime
+   timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+   workflow_id = f"generation-scene-{scene_id}-{timestamp}"
    ```
 
-2. Log: "🚀 Generation workflow initialized for scene {scene_id}"
-3. Continue to STEP 1
+2. **Determine session-aware storage path**:
+   ```python
+   # Check if active session exists
+   active_session = get_active_session()  # From session.lock
+
+   if active_session:
+       state_path = f"workspace/sessions/{active_session}/workflow-state/{workflow_id}.json"
+       working_dir = f"workspace/sessions/{active_session}/generation-runs/{workflow_id}"
+   else:
+       state_path = f"workspace/workflow-state/{workflow_id}.json"
+       working_dir = f"workspace/generation-runs/{workflow_id}"
+   ```
+
+3. **Create initial workflow state** (write JSON file manually):
+   ```json
+   {
+     "workflow_id": "generation-scene-0204-20251110-143000",
+     "workflow_type": "generation",
+     "session_name": "work-on-chapter-02",  // or null if no session
+     "status": "in_progress",
+     "created_at": "2025-11-10T14:30:00Z",
+     "updated_at": "2025-11-10T14:30:00Z",
+
+     "generation": {
+       "scene_id": "0204",
+       "current_step": 1,
+       "total_steps": 7,
+       "steps": [
+         {"step": 1, "name": "File Check", "status": "pending", "started_at": null, "completed_at": null, "artifacts": {}},
+         {"step": 2, "name": "Blueprint Validation", "status": "pending", "started_at": null, "completed_at": null, "artifacts": {}},
+         {"step": 3, "name": "Verification Plan", "status": "pending", "started_at": null, "completed_at": null, "artifacts": {}, "human_approval": {"required": true, "approved": false}},
+         {"step": 4, "name": "Generation", "status": "pending", "started_at": null, "completed_at": null, "artifacts": {}, "attempts": {"current": 0, "max": 3, "history": []}},
+         {"step": 5, "name": "Fast Compliance Check", "status": "pending", "started_at": null, "completed_at": null, "artifacts": {}},
+         {"step": 6, "name": "Full Validation", "status": "pending", "started_at": null, "completed_at": null, "artifacts": {}},
+         {"step": 7, "name": "Final Output", "status": "pending", "started_at": null, "completed_at": null, "artifacts": {}}
+       ],
+       "artifacts": {
+         "blueprint_path": "acts/act-1/chapters/chapter-02/scenes/scene-0204-blueprint.md",
+         "working_dir": "workspace/.../generation-runs/generation-scene-0204-20251110-143000"
+       }
+     }
+   }
+   ```
+
+4. **Write state file**:
+   ```python
+   import json
+   from pathlib import Path
+
+   Path(state_path).parent.mkdir(parents=True, exist_ok=True)
+   Path(working_dir).mkdir(parents=True, exist_ok=True)
+
+   with open(state_path, 'w') as f:
+       json.dump(workflow_state, f, indent=2)
+   ```
+
+5. Log: "🚀 Generation workflow initialized\n\nWorkflow ID: {workflow_id}\nScene: {scene_id}\nSession: {active_session or 'global'}"
+
+6. Continue to STEP 1
 
 ### STEP 1: File System Check
 
-1. **START STEP**:
+1. **VALIDATE PREREQUISITES**:
    ```python
-   step_start = time.time()
-   mcp_call("start_step", {
-       "scene_id": scene_id,
-       "step_name": "scene:gen:setup:files"
-   })
+   result = validate_prerequisites(workflow_id, step=1)
+   if not result["can_start_step"]:
+       return f"❌ Cannot start Step 1: {result['blocking_issues']}"
    ```
 
-2. Construct blueprint path: `acts/act-{act}/chapters/chapter-{chapter}/scenes/scene-{ID}-blueprint.md`
-
-3. Check file existence
-
-4. **IF NOT FOUND**:
+2. **START STEP**:
    ```python
-   mcp_call("fail_step", {
-       "scene_id": scene_id,
-       "step_name": "scene:gen:setup:files",
-       "failure_reason": f"Blueprint not found at {blueprint_path}",
-       "metadata": {"terminal": True, "severity": "CRITICAL"}
-   })
+   update_workflow_state(workflow_id, step=1, status="in_progress")
+   ```
+
+3. Construct blueprint path: `acts/act-{act}/chapters/chapter-{chapter}/scenes/scene-{ID}-blueprint.md`
+
+4. Check file existence
+
+5. **IF NOT FOUND**:
+   ```python
+   update_workflow_state(
+       workflow_id,
+       step=1,
+       status="failed",
+       artifacts={"error": f"Blueprint not found at {blueprint_path}"}
+   )
    ```
    - Return: "❌ Blueprint not found. Create blueprint first using /plan-scene {ID}"
    - STOP
 
-5. **IF FOUND**:
+6. **IF FOUND**:
    ```python
-   mcp_call("complete_step", {
-       "scene_id": scene_id,
-       "step_name": "scene:gen:setup:files",
-       "duration_seconds": time.time() - step_start,
-       "artifacts": {"blueprint_path": blueprint_path}
-   })
+   update_workflow_state(
+       workflow_id,
+       step=1,
+       status="completed",
+       artifacts={"blueprint_path": blueprint_path}
+   )
    ```
+   - Log: "✅ Step 1/7: Blueprint found"
    - Continue to STEP 2
 
 ### STEP 2: Blueprint Validation
 
-1. **START STEP**:
+1. **VALIDATE PREREQUISITES**:
    ```python
-   step_start = time.time()
-   mcp_call("start_step", {
-       "scene_id": scene_id,
-       "step_name": "scene:gen:setup:blueprint"
-   })
+   result = validate_prerequisites(workflow_id, step=2)
+   if not result["can_start_step"]:
+       return f"❌ Cannot start Step 2: {result['blocking_issues']}"
    ```
 
-2. Launch `blueprint-validator` agent with blueprint_path and scene_id
-
-3. Wait for output: `constraints-list.json` OR `validation-errors.json`
-
-4. **IF validation-errors.json (FAIL)**:
+2. **START STEP**:
    ```python
-   mcp_call("fail_step", {
-       "scene_id": scene_id,
-       "step_name": "scene:gen:setup:blueprint",
-       "failure_reason": f"Blueprint validation failed: {len(errors)} critical errors",
-       "metadata": {"terminal": True, "severity": "CRITICAL"}
-   })
+   update_workflow_state(workflow_id, step=2, status="in_progress")
+   ```
+
+3. Launch `blueprint-validator` agent with blueprint_path and scene_id
+
+4. Wait for output: `constraints-list.json` OR `validation-errors.json`
+
+5. **IF validation-errors.json (FAIL)**:
+   ```python
+   update_workflow_state(
+       workflow_id,
+       step=2,
+       status="failed",
+       artifacts={
+           "validation_errors": errors,
+           "error_count": len(errors)
+       }
+   )
    ```
    - Return formatted errors to user
    - STOP
 
-5. **IF constraints-list.json (PASS)**:
+6. **IF constraints-list.json (PASS)**:
    ```python
-   mcp_call("complete_step", {
-       "scene_id": scene_id,
-       "step_name": "scene:gen:setup:blueprint",
-       "duration_seconds": time.time() - step_start,
-       "artifacts": {"constraints_list_path": f"workspace/artifacts/scene-{scene_id}/constraints-list.json"}
-   })
+   constraints_path = f"{working_dir}/constraints-list.json"
+   update_workflow_state(
+       workflow_id,
+       step=2,
+       status="completed",
+       artifacts={"constraints_list": constraints_path}
+   )
    ```
+   - Log: "✅ Step 2/7: Blueprint validated"
    - Continue to STEP 3
 
 ### STEP 3: Verification Plan & User Approval
 
-1. **START STEP**:
+1. **VALIDATE PREREQUISITES**:
    ```python
-   step_start = time.time()
-   modification_iterations = 0
-   mcp_call("start_step", {
-       "scene_id": scene_id,
-       "step_name": "scene:gen:setup:plan"
-   })
+   result = validate_prerequisites(workflow_id, step=3)
+   if not result["can_start_step"]:
+       return f"❌ Cannot start Step 3: {result['blocking_issues']}"
    ```
 
-2. Launch `verification-planner` with constraints_file and scene_id
+2. **START STEP**:
+   ```python
+   update_workflow_state(workflow_id, step=3, status="in_progress")
+   modification_iterations = 0
+   ```
 
-3. Wait for output: `verification-plan.md`
+3. Launch `verification-planner` with constraints_file and scene_id
 
-4. Display plan to user
+4. Wait for output: `verification-plan.md`
 
-5. **USER APPROVAL LOOP** (max 5 iterations):
+5. Save verification plan to working_dir
+
+6. Display plan to user
+
+7. **SET WAITING FOR APPROVAL**:
+   ```python
+   update_workflow_state(workflow_id, step=3, status="waiting_approval")
+   ```
+
+8. **USER APPROVAL LOOP** (max 5 iterations):
 
    Prompt: "Is this plan correct? [Y/n/changes]"
 
    **IF "Y" or Enter**:
    ```python
-   mcp_call("complete_step", {
-       "scene_id": scene_id,
-       "step_name": "scene:gen:setup:plan",
-       "duration_seconds": time.time() - step_start,
-       "artifacts": {
-           "verification_plan_path": f"workspace/artifacts/scene-{scene_id}/verification-plan.md",
-           "approved_plan_path": f"workspace/artifacts/scene-{scene_id}/approved-plan.json"
-       },
-       "metadata": {"user_approved": True, "modification_iterations": modification_iterations}
-   })
+   # User approved
+   approve_step(workflow_id, step=3, approved=True, modifications=None)
+   # This automatically updates state to completed and moves to step 4
    ```
+   - Log: "✅ Step 3/7: Verification plan approved"
    - Continue to STEP 4
 
    **IF "n"**:
    ```python
-   mcp_call("fail_step", {
-       "scene_id": scene_id,
-       "step_name": "scene:gen:setup:plan",
-       "failure_reason": f"User rejected plan: {user_reason}",
-       "metadata": {"terminal": True}
-   })
+   approve_step(workflow_id, step=3, approved=False, modifications=None)
+   # Mark step as failed
+   update_workflow_state(workflow_id, step=3, status="failed")
    ```
+   - Return: "❌ Generation cancelled by user"
    - STOP
 
    **IF modification request**:
-   - Update constraints, re-launch planner
+   - Parse modifications from user input
+   - Update constraints with modifications
+   - Re-launch verification-planner
    - modification_iterations += 1
-   - Loop back
-   - **IF modification_iterations > 5**: Suggest blueprint revision
+   - Loop back to display updated plan
+   - **IF modification_iterations > 5**: Suggest blueprint revision instead
 
 ### STEP 4: Generation Loop (with Retry Logic)
 
+**WORKFLOW STATE PATTERN** (applies to Steps 4-7):
+
+```python
+# BEFORE STARTING STEP
+result = validate_prerequisites(workflow_id, step=N)
+if not result["can_start_step"]:
+    return error(result["blocking_issues"])
+
+# START STEP
+update_workflow_state(workflow_id, step=N, status="in_progress")
+
+# [PERFORM STEP LOGIC]
+
+# ON SUCCESS
+update_workflow_state(
+    workflow_id,
+    step=N,
+    status="completed",
+    artifacts={...}
+)
+
+# ON FAILURE
+update_workflow_state(
+    workflow_id,
+    step=N,
+    status="failed",
+    artifacts={"error": error_message}
+)
+```
+
 Initialize:
 ```python
-step_start = time.time()
+# Validate prerequisites
+result = validate_prerequisites(workflow_id, step=4)
+if not result["can_start_step"]:
+    return error(result["blocking_issues"])
+
+# Start step
+update_workflow_state(workflow_id, step=4, status="in_progress")
+
+# Initialize retry tracking
 attempt = 1
 max_attempts = 3
-mcp_call("start_step", {
-    "scene_id": scene_id,
-    "step_name": "scene:gen:draft:prose"
-})
 ```
 
 **LOOP** (while attempt <= max_attempts):
@@ -371,134 +521,158 @@ mcp_call("start_step", {
 
 **After loop completes (compliance passed)**:
 ```python
-mcp_call("complete_step", {
-    "scene_id": scene_id,
-    "step_name": "scene:gen:draft:prose",
-    "duration_seconds": time.time() - step_start,
-    "artifacts": {
-        "final_draft_path": f"workspace/artifacts/scene-{scene_id}/draft-attempt{attempt}.md",
-        "compliance_result_path": f"workspace/artifacts/scene-{scene_id}/fast-compliance-result-attempt{attempt}.json"
-    },
-    "metadata": {"attempts_made": attempt, "success_on_attempt": attempt}
-})
+# Update attempt history
+state = load_workflow_state(workflow_id)  # Helper to read JSON
+state["generation"]["steps"][3]["attempts"]["current"] = attempt
+state["generation"]["steps"][3]["attempts"]["history"] = attempts_history
+
+update_workflow_state(
+    workflow_id,
+    step=4,
+    status="completed",
+    artifacts={
+        "draft": f"{working_dir}/scene-{scene_id}-draft.md",
+        "compliance_echo": f"{working_dir}/compliance-echo.json",
+        "attempts": attempt
+    }
+)
 ```
 Rename: `draft-attempt{N}.md` → `scene-{ID}-draft.md`
+Log: f"✅ Step 4/7: Prose generated (attempt {attempt}/3)"
 Continue to STEP 5
 
 **Error handling inside loop**:
 
 - **After failed compliance** (attempt < 3):
   ```python
-  severity = ["LOW", "MEDIUM", "HIGH"][attempt-1]
-  mcp_call("fail_step", {
-      "scene_id": scene_id,
-      "step_name": "scene:gen:draft:prose",
-      "failure_reason": f"Attempt {attempt} failed: {violation_summary}",
-      "metadata": {"attempt": attempt, "severity": severity, "terminal": False}
-  })
-  mcp_call("retry_step", {
-      "scene_id": scene_id,
-      "step_name": "scene:gen:draft:prose",
-      "metadata": {"attempt_number": attempt + 1}
-  })
+  # Update attempts in state, but don't fail step yet
+  # Just continue to next attempt
+  attempt += 1
   ```
   Continue to next attempt
 
 - **After 3rd failed attempt**:
   ```python
-  mcp_call("fail_step", {
-      "scene_id": scene_id,
-      "step_name": "scene:gen:draft:prose",
-      "failure_reason": f"Max attempts (3/3). Persistent violations: {violations_list}",
-      "metadata": {"attempt": 3, "severity": "CRITICAL", "terminal": True}
-  })
+  update_workflow_state(
+      workflow_id,
+      step=4,
+      status="failed",
+      artifacts={
+          "error": "Failed compliance after 3 attempts",
+          "violations": violations_list,
+          "attempts": 3
+      }
+  )
   ```
+  Return: "❌ Generation failed after 3 attempts. Review blueprint and retry."
   STOP
 
-### STEP 5: Full Validation
+### STEP 5: Fast Compliance Check
 
-1. **START STEP**:
+**NOTE**: This step is embedded in STEP 4 retry loop. Already handled above.
+
+### STEP 6: Full Validation
+
+1. **VALIDATE PREREQUISITES**:
    ```python
-   step_start = time.time()
-   mcp_call("start_step", {
-       "scene_id": scene_id,
-       "step_name": "scene:gen:review:validation"
-   })
+   result = validate_prerequisites(workflow_id, step=6)
+   if not result["can_start_step"]:
+       return error(result["blocking_issues"])
    ```
 
-2. Launch `validation-aggregator` with draft_path, blueprint_path, scene_id
+2. **START STEP**:
+   ```python
+   update_workflow_state(workflow_id, step=6, status="in_progress")
+   ```
 
-3. Aggregator launches 7 validators in parallel
+3. Launch `validation-aggregator` with draft_path, blueprint_path, scene_id
 
-4. Wait for: `final-validation-report.json`
+4. Aggregator launches 7 validators in parallel
 
-5. Read results
+5. Wait for: `final-validation-report.json`
 
-6. **COMPLETE STEP**:
+6. Read results
+
+7. **COMPLETE STEP**:
    ```python
    passed_count = sum(1 for v in validation_results if v["status"] == "PASS")
    warned_count = sum(1 for v in validation_results if v["status"] == "WARN")
    failed_count = sum(1 for v in validation_results if v["status"] == "FAIL")
 
-   mcp_call("complete_step", {
-       "scene_id": scene_id,
-       "step_name": "scene:gen:review:validation",
-       "duration_seconds": time.time() - step_start,
-       "artifacts": {"final_validation_report_path": f"workspace/artifacts/scene-{scene_id}/final-validation-report.json"},
-       "metadata": {"validators_passed": passed_count, "validators_warned": warned_count, "validators_failed": failed_count}
-   })
-   ```
-
-7. Continue to STEP 6
-
-### STEP 6: Format Final Output
-
-1. **START STEP**:
-   ```python
-   step_start = time.time()
-   mcp_call("start_step", {
-       "scene_id": scene_id,
-       "step_name": "scene:gen:publish:output"
-   })
-   ```
-
-2. Read `final-validation-report.json`
-
-3. Generate summary (2-3 sentences from draft)
-
-4. Extract key moments
-
-5. Calculate metrics
-
-6. **COMPLETE WORKFLOW**:
-   ```python
-   total_duration = time.time() - workflow_start_time
-   mcp_call("complete_step", {
-       "scene_id": scene_id,
-       "step_name": "scene:gen:publish:output",
-       "duration_seconds": time.time() - step_start,
-       "artifacts": {
-           "final_scene_path": final_file_path,
-           "validation_report_path": validation_report_path
-       },
-       "metadata": {
-           "workflow_complete": True,
-           "word_count": word_count,
-           "total_duration_seconds": total_duration,
-           "retry_count": retry_count
+   update_workflow_state(
+       workflow_id,
+       step=6,
+       status="completed",
+       artifacts={
+           "validation_report": f"{working_dir}/final-validation-report.json",
+           "validators_passed": passed_count,
+           "validators_warned": warned_count,
+           "validators_failed": failed_count
        }
-   })
+   )
    ```
 
-8. Format final message to user:
+8. Log: "✅ Step 6/7: Validation complete ({passed_count}/7 validators passed)"
+
+9. Continue to STEP 7
+
+### STEP 7: Format Final Output
+
+1. **VALIDATE PREREQUISITES**:
+   ```python
+   result = validate_prerequisites(workflow_id, step=7)
+   if not result["can_start_step"]:
+       return error(result["blocking_issues"])
+   ```
+
+2. **START STEP**:
+   ```python
+   update_workflow_state(workflow_id, step=7, status="in_progress")
+   ```
+
+3. Read `final-validation-report.json`
+
+4. Generate summary (2-3 sentences from draft)
+
+5. Extract key moments
+
+6. Calculate metrics
+
+7. Copy draft to final location:
+   ```python
+   # Copy scene-{ID}-draft.md to acts/.../content/scene-{ID}.md
+   final_path = f"acts/act-{act}/chapters/chapter-{chapter}/content/scene-{scene_id}.md"
+   shutil.copy(draft_path, final_path)
+   ```
+
+8. **COMPLETE WORKFLOW**:
+   ```python
+   update_workflow_state(
+       workflow_id,
+       step=7,
+       status="completed",
+       artifacts={
+           "final_scene": final_path,
+           "validation_report": validation_report_path,
+           "word_count": word_count,
+           "summary": summary
+       }
+   )
+   ```
+
+9. Log: "✅ Step 7/7: Final output ready"
+
+10. Format final message to user:
 
 ```markdown
 ## ✅ SCENE GENERATION COMPLETE
 
+**Workflow ID**: {workflow_id}
 **Scene**: {scene_id}
-**File**: `{final_file_path}`
+**File**: `{final_path}`
 **Volume**: {word_count} words
 **Generated in**: {total_time} ({retry_count} attempts)
+**Session**: {session_name or 'global'}
 
 ---
 

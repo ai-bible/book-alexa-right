@@ -17,6 +17,25 @@ FAILURE MODE: Graceful - errors logged, never blocks
 import sys
 import json
 from pathlib import Path
+from typing import Optional
+
+
+def _print_file_status(header: str, details: dict[str, Optional[str]]) -> None:
+    """
+    Print file status information to stderr in consistent format.
+
+    Args:
+        header: Header line (e.g., "💡 [CoW Active] Reading from session: file.txt")
+        details: Dictionary of detail lines to print
+                Keys become labels, None values are printed as-is
+    """
+    print(f"\n{header}", file=sys.stderr)
+    for key, value in details.items():
+        if value is None:
+            # Print key as-is (for lines without labels)
+            print(f"   {key}", file=sys.stderr)
+        else:
+            print(f"   {key}: {value}", file=sys.stderr)
 
 
 def main():
@@ -68,13 +87,9 @@ def main():
 
         if not file_path:
             # No specific file path - show general session info
-            print(
-                f"\n💡 [Active Session] All file operations use session: {session_name}",
-                file=sys.stderr
-            )
-            print(
-                f"   Session path: workspace/sessions/{session_name}/",
-                file=sys.stderr
+            _print_file_status(
+                f"💡 [Active Session] All file operations use session: {session_name}",
+                {"Session path": f"workspace/sessions/{session_name}/"}
             )
             sys.exit(0)
 
@@ -82,52 +97,46 @@ def main():
         session_file = session_path / file_path
         global_file = Path(file_path)
 
-        if session_file.exists():
-            # File exists in session (modified via CoW)
-            print(
-                f"\n💡 [CoW Active] Reading from session: {file_path}",
-                file=sys.stderr
+        # Check when both files exist (session takes precedence)
+        if session_file.exists() and global_file.exists():
+            # File exists in both locations - session file takes precedence
+            _print_file_status(
+                f"💡 [CoW Active] Reading from session: {file_path}",
+                {
+                    "Source": f"workspace/sessions/{session_name}/{file_path}",
+                    "Status": "Modified in session (CoW copy)",
+                    "Note": "Global file is shadowed - session version takes precedence"
+                }
             )
-            print(
-                f"   Source: workspace/sessions/{session_name}/{file_path}",
-                file=sys.stderr
-            )
-            print(
-                f"   Status: Modified in session (CoW copy)",
-                file=sys.stderr
+        elif session_file.exists():
+            # File exists only in session (modified via CoW)
+            _print_file_status(
+                f"💡 [CoW Active] Reading from session: {file_path}",
+                {
+                    "Source": f"workspace/sessions/{session_name}/{file_path}",
+                    "Status": "Modified in session (CoW copy)"
+                }
             )
         elif global_file.exists():
             # File not in session, reading from global
-            print(
-                f"\n💡 [Global] Reading from global: {file_path}",
-                file=sys.stderr
-            )
-            print(
-                f"   Source: {file_path}",
-                file=sys.stderr
-            )
-            print(
-                f"   Status: Not yet modified in session",
-                file=sys.stderr
-            )
-
+            details = {
+                "Source": file_path,
+                "Status": "Not yet modified in session"
+            }
             # If this is a Write operation, CoW will trigger
             if tool_name in ["Write", "Edit"]:
-                print(
-                    f"   ⚡ CoW will trigger: File will be copied to session on write",
-                    file=sys.stderr
-                )
-        else:
+                details["⚡ CoW will trigger"] = "File will be copied to session on write"
+
+            _print_file_status(
+                f"💡 [Global] Reading from global: {file_path}",
+                details
+            )
+        elif tool_name in ["Write", "Edit"]:
             # New file (doesn't exist anywhere)
-            if tool_name in ["Write", "Edit"]:
-                print(
-                    f"\n✨ [New File] Creating in session: {file_path}",
-                    file=sys.stderr
-                )
-                print(
-                    f"   Destination: workspace/sessions/{session_name}/{file_path}",
-                    file=sys.stderr
-                )
+            _print_file_status(
+                f"✨ [New File] Creating in session: {file_path}",
+                {"Destination": f"workspace/sessions/{session_name}/{file_path}"}
+            )
 
         # Always exit successfully (non-blocking)
         sys.exit(0)
