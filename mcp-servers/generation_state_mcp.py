@@ -25,6 +25,21 @@ import glob
 from pydantic import BaseModel, Field, field_validator, ConfigDict
 from mcp.server.fastmcp import FastMCP
 
+# Import planning state utilities (FEAT-0003)
+try:
+    from planning_state_utils import (
+        get_entity_state as _get_entity_state,
+        update_entity_state as _update_entity_state,
+        get_children_status as _get_children_status,
+        cascade_invalidate as _cascade_invalidate,
+        get_all_descendants,
+        calculate_version_hash,
+        sync_from_json_to_sqlite
+    )
+    PLANNING_STATE_AVAILABLE = True
+except ImportError:
+    PLANNING_STATE_AVAILABLE = False
+
 # Initialize the MCP server
 mcp = FastMCP("generation_state_mcp")
 
@@ -535,6 +550,177 @@ class LogQuestionAnswerInput(BaseModel):
         if not v.isdigit() or len(v) != 4:
             raise ValueError("Scene ID must be exactly 4 digits (e.g., '0204')")
         return v
+
+
+# =============================================================================
+# FEAT-0003: Hierarchical Planning State Input Models
+# =============================================================================
+
+class GetEntityStateInput(BaseModel):
+    """Input model for get_entity_state tool."""
+    model_config = ConfigDict(
+        str_strip_whitespace=True,
+        validate_assignment=True,
+        extra='forbid'
+    )
+
+    entity_type: str = Field(
+        ...,
+        description="Type of entity: 'act', 'chapter', or 'scene'",
+        pattern=r"^(act|chapter|scene)$"
+    )
+    entity_id: str = Field(
+        ...,
+        description="Entity ID (e.g., 'act-1', 'chapter-02', 'scene-0204')",
+        min_length=1,
+        max_length=50
+    )
+
+
+class UpdateEntityStateInput(BaseModel):
+    """Input model for update_entity_state tool."""
+    model_config = ConfigDict(
+        str_strip_whitespace=True,
+        validate_assignment=True,
+        extra='forbid'
+    )
+
+    entity_type: str = Field(
+        ...,
+        description="Type of entity: 'act', 'chapter', or 'scene'",
+        pattern=r"^(act|chapter|scene)$"
+    )
+    entity_id: str = Field(
+        ...,
+        description="Entity ID",
+        min_length=1,
+        max_length=50
+    )
+    status: str = Field(
+        ...,
+        description="Status: 'draft', 'approved', 'requires-revalidation', 'invalid'",
+        pattern=r"^(draft|approved|requires-revalidation|invalid)$"
+    )
+    version_hash: str = Field(
+        ...,
+        description="SHA-256 hash of file content (64 chars)",
+        min_length=64,
+        max_length=64
+    )
+    file_path: str = Field(
+        ...,
+        description="Absolute path to planning file",
+        min_length=1,
+        max_length=500
+    )
+    parent_id: Optional[str] = Field(
+        default=None,
+        description="Parent entity_id (None for acts)"
+    )
+    parent_version_hash: Optional[str] = Field(
+        default=None,
+        description="Parent's version hash"
+    )
+    invalidation_reason: Optional[str] = Field(
+        default=None,
+        description="Why marked requires-revalidation"
+    )
+    metadata: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Optional metadata dict"
+    )
+
+
+class GetHierarchyTreeInput(BaseModel):
+    """Input model for get_hierarchy_tree tool."""
+    model_config = ConfigDict(
+        str_strip_whitespace=True,
+        validate_assignment=True,
+        extra='forbid'
+    )
+
+    act_id: str = Field(
+        ...,
+        description="Act ID (e.g., 'act-1')",
+        pattern=r"^act-\d+$"
+    )
+    include_status: bool = Field(
+        default=True,
+        description="Include status for each node"
+    )
+
+
+class CascadeInvalidateInput(BaseModel):
+    """Input model for cascade_invalidate tool."""
+    model_config = ConfigDict(
+        str_strip_whitespace=True,
+        validate_assignment=True,
+        extra='forbid'
+    )
+
+    entity_type: str = Field(
+        ...,
+        description="Type of entity: 'act', 'chapter', or 'scene'",
+        pattern=r"^(act|chapter|scene)$"
+    )
+    entity_id: str = Field(
+        ...,
+        description="Entity ID",
+        min_length=1,
+        max_length=50
+    )
+    reason: str = Field(
+        ...,
+        description="Invalidation reason (e.g., 'parent_chapter_regenerated')",
+        min_length=1,
+        max_length=500
+    )
+
+
+class GetChildrenStatusInput(BaseModel):
+    """Input model for get_children_status tool."""
+    model_config = ConfigDict(
+        str_strip_whitespace=True,
+        validate_assignment=True,
+        extra='forbid'
+    )
+
+    entity_type: str = Field(
+        ...,
+        description="Type of entity: 'act' or 'chapter' (scenes have no children)",
+        pattern=r"^(act|chapter)$"
+    )
+    entity_id: str = Field(
+        ...,
+        description="Entity ID",
+        min_length=1,
+        max_length=50
+    )
+
+
+class ApproveEntityInput(BaseModel):
+    """Input model for approve_entity tool."""
+    model_config = ConfigDict(
+        str_strip_whitespace=True,
+        validate_assignment=True,
+        extra='forbid'
+    )
+
+    entity_type: str = Field(
+        ...,
+        description="Type of entity: 'act', 'chapter', or 'scene'",
+        pattern=r"^(act|chapter|scene)$"
+    )
+    entity_id: str = Field(
+        ...,
+        description="Entity ID",
+        min_length=1,
+        max_length=50
+    )
+    force: bool = Field(
+        default=False,
+        description="Approve even with warnings"
+    )
 
 
 # Shared Utility Functions
@@ -2377,7 +2563,526 @@ async def log_question_answer(params: LogQuestionAnswerInput) -> str:
         return _handle_error(e)
 
 
+# =============================================================================
+# FEAT-0003: Hierarchical Planning State Tools
+# =============================================================================
+
+@mcp.tool(
+    name="get_entity_state",
+    annotations={
+        "title": "Get Planning Entity State",
+        "readOnlyHint": True,
+        "destructiveHint": False,
+        "idempotentHint": True,
+        "openWorldHint": False
+    }
+)
+async def get_entity_state_tool(params: GetEntityStateInput) -> str:
+    """
+    Get current state of a planning entity (act/chapter/scene).
+
+    This tool retrieves the complete state of a planning entity from the
+    hierarchical planning state tracker, including status, version, parent
+    relationships, and children.
+
+    Args:
+        params (GetEntityStateInput): Validated input containing:
+            - entity_type (str): 'act', 'chapter', or 'scene'
+            - entity_id (str): Entity ID (e.g., 'act-1', 'chapter-02', 'scene-0204')
+
+    Returns:
+        str: JSON-formatted state or error message
+
+    Example:
+        >>> get_entity_state(entity_type='chapter', entity_id='chapter-02')
+        {
+          "entity_id": "chapter-02",
+          "status": "approved",
+          "version_hash": "a7f3b9d2...",
+          "parent_id": "act-1",
+          "children": ["scene-0201", "scene-0202", ...]
+        }
+    """
+    if not PLANNING_STATE_AVAILABLE:
+        return "❌ ERROR: Planning state module not available\n\n" \
+               "This feature requires planning_state_utils.py module."
+
+    try:
+        state = _get_entity_state(params.entity_type, params.entity_id)
+
+        if state is None:
+            return f"❌ ERROR: Entity not found: {params.entity_type}/{params.entity_id}\n\n" \
+                   f"The entity has not been created yet or state was deleted."
+
+        # Format as JSON
+        return json.dumps(state, indent=2, ensure_ascii=False)
+
+    except Exception as e:
+        return f"❌ ERROR: Failed to get entity state\n\n{str(e)}"
+
+
+@mcp.tool(
+    name="update_entity_state",
+    annotations={
+        "title": "Update Planning Entity State",
+        "readOnlyHint": False,
+        "destructiveHint": False,
+        "idempotentHint": True,
+        "openWorldHint": False
+    }
+)
+async def update_entity_state_tool(params: UpdateEntityStateInput) -> str:
+    """
+    Update or create planning entity state.
+
+    This tool updates the state of a planning entity in the hierarchical
+    planning state tracker. Used by hooks to sync file changes to state.
+
+    Args:
+        params (UpdateEntityStateInput): Validated input containing:
+            - entity_type, entity_id, status, version_hash, file_path
+            - Optional: parent_id, parent_version_hash, invalidation_reason, metadata
+
+    Returns:
+        str: Success confirmation or error message
+
+    Example:
+        >>> update_entity_state(
+        ...     entity_type='chapter',
+        ...     entity_id='chapter-02',
+        ...     status='draft',
+        ...     version_hash='a7f3...',
+        ...     file_path='acts/act-1/chapters/chapter-02/plan.md',
+        ...     parent_id='act-1'
+        ... )
+        ✅ Entity state updated: chapter-02
+    """
+    if not PLANNING_STATE_AVAILABLE:
+        return "❌ ERROR: Planning state module not available"
+
+    try:
+        success = _update_entity_state(
+            entity_type=params.entity_type,
+            entity_id=params.entity_id,
+            status=params.status,
+            version_hash=params.version_hash,
+            file_path=params.file_path,
+            parent_id=params.parent_id,
+            parent_version_hash=params.parent_version_hash,
+            invalidation_reason=params.invalidation_reason,
+            metadata=params.metadata
+        )
+
+        if success:
+            return f"✅ Entity state updated: {params.entity_type}/{params.entity_id}\n\n" \
+                   f"Status: {params.status}\n" \
+                   f"Version: {params.version_hash[:8]}..."
+        else:
+            return f"❌ ERROR: Failed to update entity state for {params.entity_id}"
+
+    except Exception as e:
+        return f"❌ ERROR: Update failed\n\n{str(e)}"
+
+
+@mcp.tool(
+    name="get_hierarchy_tree",
+    annotations={
+        "title": "Get Hierarchy Tree for Act",
+        "readOnlyHint": True,
+        "destructiveHint": False,
+        "idempotentHint": True,
+        "openWorldHint": False
+    }
+)
+async def get_hierarchy_tree_tool(params: GetHierarchyTreeInput) -> str:
+    """
+    Get complete hierarchy tree for an act with all descendants.
+
+    This tool returns the full hierarchical structure of an act, including
+    all chapters and scenes, with their current status.
+
+    Args:
+        params (GetHierarchyTreeInput): Validated input containing:
+            - act_id (str): Act ID (e.g., 'act-1')
+            - include_status (bool): Include status for each node (default: True)
+
+    Returns:
+        str: Formatted tree structure or error message
+
+    Example:
+        >>> get_hierarchy_tree(act_id='act-1')
+        act-1 [approved]
+        ├── chapter-01 [approved]
+        │   ├── scene-0101 [approved]
+        │   └── scene-0102 [requires-revalidation]
+        └── chapter-02 [draft]
+            ├── scene-0201 [draft]
+            └── scene-0202 [draft]
+    """
+    if not PLANNING_STATE_AVAILABLE:
+        return "❌ ERROR: Planning state module not available"
+
+    try:
+        # Get act state
+        act_state = _get_entity_state('act', params.act_id)
+
+        if act_state is None:
+            return f"❌ ERROR: Act not found: {params.act_id}"
+
+        # Build tree
+        lines = []
+        lines.append(f"📊 HIERARCHY TREE: {params.act_id}")
+        lines.append("")
+
+        # Add act
+        status_str = f" [{act_state['status']}]" if params.include_status else ""
+        lines.append(f"{params.act_id}{status_str}")
+
+        # Get all chapters
+        chapters = []
+        for child_id in act_state.get('children', []):
+            if child_id.startswith('chapter-'):
+                chapter_state = _get_entity_state('chapter', child_id)
+                if chapter_state:
+                    chapters.append(chapter_state)
+
+        # Sort chapters by ID
+        chapters.sort(key=lambda c: c['entity_id'])
+
+        for i, chapter in enumerate(chapters):
+            is_last_chapter = (i == len(chapters) - 1)
+            chapter_prefix = "└──" if is_last_chapter else "├──"
+
+            status_str = f" [{chapter['status']}]" if params.include_status else ""
+            lines.append(f"{chapter_prefix} {chapter['entity_id']}{status_str}")
+
+            # Get scenes for this chapter
+            scenes = []
+            for child_id in chapter.get('children', []):
+                if child_id.startswith('scene-'):
+                    scene_state = _get_entity_state('scene', child_id)
+                    if scene_state:
+                        scenes.append(scene_state)
+
+            # Sort scenes by ID
+            scenes.sort(key=lambda s: s['entity_id'])
+
+            for j, scene in enumerate(scenes):
+                is_last_scene = (j == len(scenes) - 1)
+                scene_branch = "    " if is_last_chapter else "│   "
+                scene_prefix = "└──" if is_last_scene else "├──"
+
+                status_str = f" [{scene['status']}]" if params.include_status else ""
+                lines.append(f"{scene_branch}{scene_prefix} {scene['entity_id']}{status_str}")
+
+        lines.append("")
+        lines.append("Legend:")
+        lines.append("  - draft: Plan created, not yet approved")
+        lines.append("  - approved: Approved for next level / generation")
+        lines.append("  - requires-revalidation: Parent changed, needs review")
+        lines.append("  - invalid: Deprecated, should not be used")
+
+        return "\n".join(lines)
+
+    except Exception as e:
+        return f"❌ ERROR: Failed to build hierarchy tree\n\n{str(e)}"
+
+
+@mcp.tool(
+    name="cascade_invalidate",
+    annotations={
+        "title": "Cascade Invalidate Entity and Descendants",
+        "readOnlyHint": False,
+        "destructiveHint": False,
+        "idempotentHint": False,
+        "openWorldHint": False
+    }
+)
+async def cascade_invalidate_tool(params: CascadeInvalidateInput) -> str:
+    """
+    Mark entity and all descendants as requires-revalidation.
+
+    This tool performs cascade invalidation when a parent entity is regenerated.
+    All children are marked as requires-revalidation to ensure they are reviewed
+    against the new parent plan.
+
+    Transaction-based: all-or-nothing operation.
+
+    Args:
+        params (CascadeInvalidateInput): Validated input containing:
+            - entity_type (str): Entity type
+            - entity_id (str): Entity ID
+            - reason (str): Invalidation reason
+
+    Returns:
+        str: Summary of invalidated entities or error message
+
+    Example:
+        >>> cascade_invalidate(
+        ...     entity_type='chapter',
+        ...     entity_id='chapter-02',
+        ...     reason='parent_chapter_regenerated'
+        ... )
+        ✅ Cascade invalidation complete
+        Invalidated 5 entities:
+          - scene-0201: approved → requires-revalidation
+          - scene-0202: approved → requires-revalidation
+          ...
+    """
+    if not PLANNING_STATE_AVAILABLE:
+        return "❌ ERROR: Planning state module not available"
+
+    try:
+        result = _cascade_invalidate(
+            entity_type=params.entity_type,
+            entity_id=params.entity_id,
+            reason=params.reason
+        )
+
+        if not result['success']:
+            error_msg = result.get('error', 'Unknown error')
+            return f"❌ ERROR: Cascade invalidation failed\n\n{error_msg}"
+
+        invalidated = result['invalidated_entities']
+
+        lines = [
+            f"✅ CASCADE INVALIDATION COMPLETE",
+            "",
+            f"**Entity**: {params.entity_type}/{params.entity_id}",
+            f"**Reason**: {params.reason}",
+            f"**Invalidated**: {len(invalidated)} entities",
+            ""
+        ]
+
+        if invalidated:
+            lines.append("📝 Invalidated entities:")
+            for entity in invalidated:
+                lines.append(
+                    f"  - {entity['entity_id']}: "
+                    f"{entity['previous_status']} → {entity['new_status']}"
+                )
+            lines.append("")
+            lines.append("💡 Next steps:")
+            lines.append("  - Review each invalidated entity")
+            lines.append("  - Revalidate: /revalidate-scene <scene_id>")
+            lines.append("  - Or regenerate: /plan-scene <scene_id>")
+        else:
+            lines.append("No children required invalidation (already invalidated or no children)")
+
+        return "\n".join(lines)
+
+    except Exception as e:
+        return f"❌ ERROR: Cascade invalidation failed\n\n{str(e)}"
+
+
+@mcp.tool(
+    name="get_children_status",
+    annotations={
+        "title": "Get Children Status Summary",
+        "readOnlyHint": True,
+        "destructiveHint": False,
+        "idempotentHint": True,
+        "openWorldHint": False
+    }
+)
+async def get_children_status_tool(params: GetChildrenStatusInput) -> str:
+    """
+    Get status summary of all children for an entity.
+
+    This tool returns a summary of all children's statuses, useful for
+    checking completion progress or finding entities that need revalidation.
+
+    Args:
+        params (GetChildrenStatusInput): Validated input containing:
+            - entity_type (str): 'act' or 'chapter' (scenes have no children)
+            - entity_id (str): Entity ID
+
+    Returns:
+        str: Formatted status summary or error message
+
+    Example:
+        >>> get_children_status(entity_type='chapter', entity_id='chapter-02')
+        📊 CHILDREN STATUS: chapter-02
+
+        Total children: 5 scenes
+
+        Status breakdown:
+          - approved: 3
+          - requires-revalidation: 2
+
+        Children:
+          ✓ scene-0201 [approved]
+          ✓ scene-0202 [approved]
+          ✓ scene-0203 [approved]
+          ⚠ scene-0204 [requires-revalidation]
+          ⚠ scene-0205 [requires-revalidation]
+    """
+    if not PLANNING_STATE_AVAILABLE:
+        return "❌ ERROR: Planning state module not available"
+
+    try:
+        result = _get_children_status(
+            entity_type=params.entity_type,
+            entity_id=params.entity_id
+        )
+
+        lines = [
+            f"📊 CHILDREN STATUS: {params.entity_type}/{params.entity_id}",
+            "",
+            f"**Total children**: {result['total_children']}",
+            ""
+        ]
+
+        if result['total_children'] == 0:
+            lines.append("No children found.")
+            return "\n".join(lines)
+
+        lines.append("**Status breakdown**:")
+        for status, count in result['status_counts'].items():
+            lines.append(f"  - {status}: {count}")
+        lines.append("")
+
+        lines.append("**Children**:")
+        for child in result['children']:
+            status = child['status']
+            if status == 'approved':
+                icon = '✓'
+            elif status == 'draft':
+                icon = '📝'
+            elif status == 'requires-revalidation':
+                icon = '⚠️'
+            elif status == 'invalid':
+                icon = '❌'
+            else:
+                icon = '❓'
+
+            lines.append(f"  {icon} {child['entity_id']} [{status}]")
+
+        return "\n".join(lines)
+
+    except Exception as e:
+        return f"❌ ERROR: Failed to get children status\n\n{str(e)}"
+
+
+@mcp.tool(
+    name="approve_entity",
+    annotations={
+        "title": "Approve Planning Entity",
+        "readOnlyHint": False,
+        "destructiveHint": False,
+        "idempotentHint": True,
+        "openWorldHint": False
+    }
+)
+async def approve_entity_tool(params: ApproveEntityInput) -> str:
+    """
+    Approve a planning entity (change status from draft to approved).
+
+    This tool marks an entity as approved, allowing children to be planned.
+    Validates that parent is approved before allowing approval.
+
+    Args:
+        params (ApproveEntityInput): Validated input containing:
+            - entity_type (str): Entity type
+            - entity_id (str): Entity ID
+            - force (bool): Approve even with warnings (default: False)
+
+    Returns:
+        str: Success confirmation or error message
+
+    Example:
+        >>> approve_entity(entity_type='chapter', entity_id='chapter-02')
+        ✅ Entity approved: chapter-02
+        Status: draft → approved
+
+        You can now:
+          - Plan scenes for this chapter
+          - Use /plan-scene <scene_id>
+    """
+    if not PLANNING_STATE_AVAILABLE:
+        return "❌ ERROR: Planning state module not available"
+
+    try:
+        # Get current state
+        state = _get_entity_state(params.entity_type, params.entity_id)
+
+        if state is None:
+            return f"❌ ERROR: Entity not found: {params.entity_type}/{params.entity_id}"
+
+        current_status = state['status']
+
+        # Check if already approved
+        if current_status == 'approved':
+            return f"ℹ️ INFO: Entity already approved: {params.entity_id}\n\n" \
+                   f"Idempotent operation - no changes made."
+
+        # Validate parent is approved (except for acts)
+        if params.entity_type != 'act' and state.get('parent_id'):
+            parent_id = state['parent_id']
+            parent_type = 'act' if params.entity_type == 'chapter' else 'chapter'
+            parent_state = _get_entity_state(parent_type, parent_id)
+
+            if parent_state and parent_state['status'] != 'approved':
+                if not params.force:
+                    return f"❌ ERROR: Cannot approve {params.entity_id}\n\n" \
+                           f"Parent {parent_id} is not approved (status: {parent_state['status']})\n\n" \
+                           f"Action required:\n" \
+                           f"  1. Approve parent first: approve_entity(entity_type='{parent_type}', entity_id='{parent_id}')\n" \
+                           f"  2. Or use force=True to override"
+
+        # Update status to approved
+        success = _update_entity_state(
+            entity_type=params.entity_type,
+            entity_id=params.entity_id,
+            status='approved',
+            version_hash=state['version_hash'],
+            file_path=state['file_path'],
+            parent_id=state.get('parent_id'),
+            parent_version_hash=state.get('parent_version_hash'),
+            invalidation_reason=None,
+            metadata=state.get('metadata')
+        )
+
+        if success:
+            lines = [
+                f"✅ ENTITY APPROVED: {params.entity_type}/{params.entity_id}",
+                "",
+                f"**Status**: {current_status} → approved",
+                ""
+            ]
+
+            # Add next steps based on entity type
+            if params.entity_type == 'act':
+                lines.append("💡 You can now:")
+                lines.append("  - Plan chapters for this act")
+                lines.append("  - Use: /plan-chapter <chapter_number>")
+            elif params.entity_type == 'chapter':
+                lines.append("💡 You can now:")
+                lines.append("  - Plan scenes for this chapter")
+                lines.append("  - Use: /plan-scene <scene_id>")
+            elif params.entity_type == 'scene':
+                lines.append("💡 You can now:")
+                lines.append("  - Generate prose for this scene")
+                lines.append(f"  - Use: Generate scene {params.entity_id.replace('scene-', '')}")
+
+            return "\n".join(lines)
+        else:
+            return f"❌ ERROR: Failed to approve {params.entity_id}"
+
+    except Exception as e:
+        return f"❌ ERROR: Approval failed\n\n{str(e)}"
+
+
 # Main entry point
 if __name__ == "__main__":
+    # Initialize planning state on startup (sync from JSON if SQLite empty)
+    if PLANNING_STATE_AVAILABLE:
+        try:
+            result = sync_from_json_to_sqlite()
+            if result['success'] and result['entities_synced'] > 0:
+                print(f"✓ Synced {result['entities_synced']} planning entities from JSON to SQLite")
+        except Exception as e:
+            print(f"⚠️ Warning: Failed to sync planning state on startup: {e}")
+
     # Run server with stdio transport (default for Claude Code)
     mcp.run()
