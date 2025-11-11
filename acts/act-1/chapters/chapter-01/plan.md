@@ -77,7 +77,7 @@
 
 ---
 
-### Event 3: The Price of Time (Сцена 0103)
+### Event 3: The Price of Time (Сцена 0103)  -- DEPRECATED
 **Type:** Reaction/Revelation
 **Purpose:** Напоминание о статусе short-timer, цена времени
 **Participants:** Алекса, медсестра/робот
