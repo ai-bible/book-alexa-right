@@ -945,3 +945,393 @@ def sync_from_sqlite_to_json() -> Dict[str, Any]:
         }
     finally:
         conn.close()
+
+
+# =============================================================================
+# Backup Management (FEAT-0003 Phase 5)
+# =============================================================================
+
+def create_backup(
+    entity_type: str,
+    entity_id: str,
+    file_path: str,
+    reason: str = "manual"
+) -> Dict[str, Any]:
+    """
+    Create timestamped backup of planning file.
+
+    Args:
+        entity_type: Entity type ('act', 'chapter', 'scene')
+        entity_id: Entity ID (e.g., 'act-1', 'chapter-02', 'scene-0204')
+        file_path: Path to current file to backup
+        reason: Reason for backup ('regeneration', 'manual', 'restore')
+
+    Returns:
+        Dict with:
+            success: bool
+            backup_id: int (if success)
+            backup_path: str (if success)
+            message: str
+    """
+    import shutil
+
+    # Validate inputs
+    if entity_type not in ENTITY_TYPES:
+        return {"success": False, "message": f"Invalid entity_type: {entity_type}"}
+
+    file_path = Path(file_path)
+    if not file_path.exists():
+        return {"success": False, "message": f"File not found: {file_path}"}
+
+    try:
+        # Create backups directory
+        parent_dir = file_path.parent
+        backups_dir = parent_dir / "backups"
+        backups_dir.mkdir(exist_ok=True)
+
+        # Generate backup filename with timestamp
+        original_name = file_path.stem  # e.g., 'plan', 'strategic-plan', 'scene-0204-blueprint'
+        timestamp = datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
+        backup_name = f"{original_name}-{timestamp}.md"
+        backup_path = backups_dir / backup_name
+
+        # Copy file
+        shutil.copy2(file_path, backup_path)
+
+        # Calculate version hash of backed-up file
+        version_hash = calculate_version_hash(file_path)
+
+        # Log to database
+        conn = _get_db_connection()
+        if conn:
+            try:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    INSERT INTO planning_entity_backups (
+                        entity_type, entity_id, version_hash,
+                        backup_file_path, backed_up_at, reason
+                    ) VALUES (?, ?, ?, ?, ?, ?)
+                """, (
+                    entity_type,
+                    entity_id,
+                    version_hash,
+                    str(backup_path.resolve()),
+                    datetime.now(timezone.utc).isoformat(),
+                    reason
+                ))
+                conn.commit()
+                backup_id = cursor.lastrowid
+
+                return {
+                    "success": True,
+                    "backup_id": backup_id,
+                    "backup_path": str(backup_path),
+                    "version_hash": version_hash,
+                    "message": f"Backup created successfully"
+                }
+            except Exception as e:
+                return {
+                    "success": False,
+                    "message": f"Backup file created but database logging failed: {e}",
+                    "backup_path": str(backup_path)
+                }
+            finally:
+                conn.close()
+        else:
+            # Database unavailable, file backup succeeded
+            return {
+                "success": True,
+                "backup_path": str(backup_path),
+                "message": "Backup created (database logging unavailable)"
+            }
+
+    except Exception as e:
+        return {"success": False, "message": f"Backup creation failed: {e}"}
+
+
+def list_backups(
+    entity_type: str,
+    entity_id: str
+) -> Dict[str, Any]:
+    """
+    List all backups for a planning entity.
+
+    Args:
+        entity_type: Entity type ('act', 'chapter', 'scene')
+        entity_id: Entity ID
+
+    Returns:
+        Dict with:
+            success: bool
+            backups: List[Dict] with backup details
+            message: str
+    """
+    if entity_type not in ENTITY_TYPES:
+        return {"success": False, "backups": [], "message": f"Invalid entity_type: {entity_type}"}
+
+    conn = _get_db_connection()
+    if not conn:
+        return {
+            "success": False,
+            "backups": [],
+            "message": "Database unavailable"
+        }
+
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT backup_id, version_hash, backup_file_path,
+                   backed_up_at, reason
+            FROM planning_entity_backups
+            WHERE entity_type = ? AND entity_id = ?
+            ORDER BY backed_up_at DESC
+        """, (entity_type, entity_id))
+
+        rows = cursor.fetchall()
+
+        backups = []
+        for row in rows:
+            backup = {
+                "backup_id": row[0],
+                "version_hash": row[1],
+                "backup_file_path": row[2],
+                "backed_up_at": row[3],
+                "reason": row[4],
+                "exists": Path(row[2]).exists()
+            }
+            backups.append(backup)
+
+        return {
+            "success": True,
+            "backups": backups,
+            "count": len(backups),
+            "message": f"Found {len(backups)} backup(s)"
+        }
+
+    except Exception as e:
+        return {
+            "success": False,
+            "backups": [],
+            "message": f"Failed to list backups: {e}"
+        }
+    finally:
+        conn.close()
+
+
+def restore_backup(
+    entity_type: str,
+    entity_id: str,
+    backup_id: int
+) -> Dict[str, Any]:
+    """
+    Restore a backup version of a planning file.
+
+    Creates a backup of current version before restoring.
+
+    Args:
+        entity_type: Entity type
+        entity_id: Entity ID
+        backup_id: Backup ID to restore
+
+    Returns:
+        Dict with:
+            success: bool
+            current_version_backup_id: int (backup of current before restore)
+            restored_from: str (backup path)
+            message: str
+    """
+    import shutil
+
+    if entity_type not in ENTITY_TYPES:
+        return {"success": False, "message": f"Invalid entity_type: {entity_type}"}
+
+    conn = _get_db_connection()
+    if not conn:
+        return {"success": False, "message": "Database unavailable"}
+
+    try:
+        # Get backup details
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT backup_file_path, version_hash
+            FROM planning_entity_backups
+            WHERE backup_id = ? AND entity_type = ? AND entity_id = ?
+        """, (backup_id, entity_type, entity_id))
+
+        row = cursor.fetchone()
+        if not row:
+            return {"success": False, "message": f"Backup {backup_id} not found"}
+
+        backup_file_path = Path(row[0])
+        backup_version_hash = row[1]
+
+        if not backup_file_path.exists():
+            return {
+                "success": False,
+                "message": f"Backup file not found: {backup_file_path}"
+            }
+
+        # Get current entity state to find current file path
+        entity_state = get_entity_state(entity_type, entity_id)
+        if not entity_state:
+            return {
+                "success": False,
+                "message": f"Entity {entity_type} '{entity_id}' not found in state"
+            }
+
+        current_file_path = Path(entity_state['file_path'])
+
+        # Create backup of current version before restoring
+        backup_result = create_backup(entity_type, entity_id, str(current_file_path), reason="restore")
+        if not backup_result['success']:
+            return {
+                "success": False,
+                "message": f"Failed to backup current version before restore: {backup_result['message']}"
+            }
+
+        # Restore backup file
+        shutil.copy2(backup_file_path, current_file_path)
+
+        # Update entity state with restored version hash
+        update_result = update_entity_state(
+            entity_type=entity_type,
+            entity_id=entity_id,
+            status=entity_state['status'],  # Preserve current status
+            version_hash=backup_version_hash,
+            file_path=str(current_file_path),
+            parent_id=entity_state.get('parent_id'),
+            parent_version_hash=entity_state.get('parent_version_hash')
+        )
+
+        if not update_result:
+            return {
+                "success": False,
+                "message": "File restored but state update failed"
+            }
+
+        return {
+            "success": True,
+            "current_version_backup_id": backup_result.get('backup_id'),
+            "restored_from": str(backup_file_path),
+            "version_hash": backup_version_hash,
+            "message": f"Restored backup {backup_id} successfully"
+        }
+
+    except Exception as e:
+        return {"success": False, "message": f"Restore failed: {e}"}
+    finally:
+        conn.close()
+
+
+def get_backup_diff(
+    backup_id1: int,
+    backup_id2: int
+) -> Dict[str, Any]:
+    """
+    Get diff between two backup versions.
+
+    Args:
+        backup_id1: First backup ID (typically older)
+        backup_id2: Second backup ID (typically newer)
+
+    Returns:
+        Dict with:
+            success: bool
+            backup1: Dict (details of first backup)
+            backup2: Dict (details of second backup)
+            diff: str (unified diff output)
+            message: str
+    """
+    import difflib
+
+    conn = _get_db_connection()
+    if not conn:
+        return {"success": False, "message": "Database unavailable"}
+
+    try:
+        cursor = conn.cursor()
+
+        # Get backup 1 details
+        cursor.execute("""
+            SELECT entity_type, entity_id, backup_file_path,
+                   version_hash, backed_up_at
+            FROM planning_entity_backups
+            WHERE backup_id = ?
+        """, (backup_id1,))
+        row1 = cursor.fetchone()
+
+        if not row1:
+            return {"success": False, "message": f"Backup {backup_id1} not found"}
+
+        # Get backup 2 details
+        cursor.execute("""
+            SELECT entity_type, entity_id, backup_file_path,
+                   version_hash, backed_up_at
+            FROM planning_entity_backups
+            WHERE backup_id = ?
+        """, (backup_id2,))
+        row2 = cursor.fetchone()
+
+        if not row2:
+            return {"success": False, "message": f"Backup {backup_id2} not found"}
+
+        # Validate same entity
+        if row1[0] != row2[0] or row1[1] != row2[1]:
+            return {
+                "success": False,
+                "message": f"Backups are from different entities: {row1[0]} '{row1[1]}' vs {row2[0]} '{row2[1]}'"
+            }
+
+        backup1_path = Path(row1[2])
+        backup2_path = Path(row2[2])
+
+        if not backup1_path.exists():
+            return {"success": False, "message": f"Backup file not found: {backup1_path}"}
+
+        if not backup2_path.exists():
+            return {"success": False, "message": f"Backup file not found: {backup2_path}"}
+
+        # Read both files
+        with open(backup1_path, 'r', encoding='utf-8') as f:
+            content1 = f.readlines()
+
+        with open(backup2_path, 'r', encoding='utf-8') as f:
+            content2 = f.readlines()
+
+        # Generate unified diff
+        diff_lines = difflib.unified_diff(
+            content1,
+            content2,
+            fromfile=f"{row1[1]} (backup {backup_id1}, {row1[4]})",
+            tofile=f"{row2[1]} (backup {backup_id2}, {row2[4]})",
+            lineterm=''
+        )
+
+        diff_text = '\n'.join(diff_lines)
+
+        return {
+            "success": True,
+            "backup1": {
+                "backup_id": backup_id1,
+                "entity_type": row1[0],
+                "entity_id": row1[1],
+                "file_path": str(backup1_path),
+                "version_hash": row1[3],
+                "backed_up_at": row1[4]
+            },
+            "backup2": {
+                "backup_id": backup_id2,
+                "entity_type": row2[0],
+                "entity_id": row2[1],
+                "file_path": str(backup2_path),
+                "version_hash": row2[3],
+                "backed_up_at": row2[4]
+            },
+            "diff": diff_text,
+            "message": "Diff generated successfully"
+        }
+
+    except Exception as e:
+        return {"success": False, "message": f"Failed to generate diff: {e}"}
+    finally:
+        conn.close()
