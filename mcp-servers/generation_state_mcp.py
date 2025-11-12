@@ -723,6 +723,98 @@ class ApproveEntityInput(BaseModel):
     )
 
 
+class CreateBackupInput(BaseModel):
+    """Input model for create_backup tool."""
+    model_config = ConfigDict(
+        str_strip_whitespace=True,
+        validate_assignment=True,
+        extra='forbid'
+    )
+
+    entity_type: str = Field(
+        ...,
+        description="Type of entity: 'act', 'chapter', or 'scene'",
+        pattern=r"^(act|chapter|scene)$"
+    )
+    entity_id: str = Field(
+        ...,
+        description="Entity ID",
+        min_length=1,
+        max_length=50
+    )
+    reason: str = Field(
+        default="manual",
+        description="Reason for backup: 'regeneration', 'manual', 'restore'"
+    )
+
+
+class ListBackupsInput(BaseModel):
+    """Input model for list_backups tool."""
+    model_config = ConfigDict(
+        str_strip_whitespace=True,
+        validate_assignment=True,
+        extra='forbid'
+    )
+
+    entity_type: str = Field(
+        ...,
+        description="Type of entity: 'act', 'chapter', or 'scene'",
+        pattern=r"^(act|chapter|scene)$"
+    )
+    entity_id: str = Field(
+        ...,
+        description="Entity ID",
+        min_length=1,
+        max_length=50
+    )
+
+
+class RestoreBackupInput(BaseModel):
+    """Input model for restore_backup tool."""
+    model_config = ConfigDict(
+        str_strip_whitespace=True,
+        validate_assignment=True,
+        extra='forbid'
+    )
+
+    entity_type: str = Field(
+        ...,
+        description="Type of entity: 'act', 'chapter', or 'scene'",
+        pattern=r"^(act|chapter|scene)$"
+    )
+    entity_id: str = Field(
+        ...,
+        description="Entity ID",
+        min_length=1,
+        max_length=50
+    )
+    backup_id: int = Field(
+        ...,
+        description="Backup ID to restore",
+        gt=0
+    )
+
+
+class GetBackupDiffInput(BaseModel):
+    """Input model for get_backup_diff tool."""
+    model_config = ConfigDict(
+        str_strip_whitespace=True,
+        validate_assignment=True,
+        extra='forbid'
+    )
+
+    backup_id1: int = Field(
+        ...,
+        description="First backup ID (typically older)",
+        gt=0
+    )
+    backup_id2: int = Field(
+        ...,
+        description="Second backup ID (typically newer)",
+        gt=0
+    )
+
+
 # Shared Utility Functions
 
 def _get_active_session() -> Optional[str]:
@@ -3071,6 +3163,328 @@ async def approve_entity_tool(params: ApproveEntityInput) -> str:
 
     except Exception as e:
         return f"❌ ERROR: Approval failed\n\n{str(e)}"
+
+
+@mcp.tool(
+    name="create_backup",
+    annotations={
+        "title": "Create Backup of Planning File",
+        "readOnlyHint": False,
+        "destructiveHint": False,
+        "idempotentHint": False,
+        "openWorldHint": False
+    }
+)
+async def create_backup_tool(params: CreateBackupInput) -> str:
+    """
+    Create timestamped backup of a planning file.
+
+    This tool creates a backup in the backups/ subdirectory with timestamp.
+    Logs backup to database for version history tracking.
+
+    Args:
+        params (CreateBackupInput): Validated input containing:
+            - entity_type (str): Entity type
+            - entity_id (str): Entity ID
+            - reason (str): Backup reason (default: 'manual')
+
+    Returns:
+        str: Success confirmation with backup details or error message
+
+    Example:
+        >>> create_backup(entity_type='chapter', entity_id='chapter-02', reason='manual')
+        ✅ Backup created successfully
+
+        Backup ID: 42
+        File: acts/act-1/chapters/chapter-02/backups/plan-2025-11-12-15-30-45.md
+        Version: a1b2c3d4...
+        Reason: manual
+    """
+    if not PLANNING_STATE_AVAILABLE:
+        return "❌ ERROR: Planning state module not available"
+
+    try:
+        # Get current entity state
+        state = _get_entity_state(params.entity_type, params.entity_id)
+        if not state:
+            return f"❌ ERROR: Entity not found: {params.entity_type}/{params.entity_id}"
+
+        file_path = state['file_path']
+
+        # Create backup
+        result = create_backup(params.entity_type, params.entity_id, file_path, params.reason)
+
+        if result['success']:
+            lines = [
+                f"✅ BACKUP CREATED SUCCESSFULLY",
+                "",
+                f"**Entity**: {params.entity_type}/{params.entity_id}",
+            ]
+
+            if 'backup_id' in result:
+                lines.append(f"**Backup ID**: {result['backup_id']}")
+
+            lines.extend([
+                f"**File**: {result['backup_path']}",
+                f"**Version**: {result.get('version_hash', 'N/A')[:8]}...",
+                f"**Reason**: {params.reason}",
+                "",
+                "💡 To restore this backup:",
+                f"  restore_backup(entity_type='{params.entity_type}', entity_id='{params.entity_id}', backup_id={result.get('backup_id', 'N/A')})"
+            ])
+
+            return "\n".join(lines)
+        else:
+            return f"❌ ERROR: Backup creation failed\n\n{result['message']}"
+
+    except Exception as e:
+        return f"❌ ERROR: Backup creation failed\n\n{str(e)}"
+
+
+@mcp.tool(
+    name="list_backups",
+    annotations={
+        "title": "List Backup History",
+        "readOnlyHint": True,
+        "destructiveHint": False,
+        "idempotentHint": True,
+        "openWorldHint": False
+    }
+)
+async def list_backups_tool(params: ListBackupsInput) -> str:
+    """
+    List all backups for a planning entity.
+
+    Shows backup history with IDs, timestamps, reasons, and file existence.
+
+    Args:
+        params (ListBackupsInput): Validated input containing:
+            - entity_type (str): Entity type
+            - entity_id (str): Entity ID
+
+    Returns:
+        str: Formatted list of backups or error message
+
+    Example:
+        >>> list_backups(entity_type='chapter', entity_id='chapter-02')
+        📦 BACKUP HISTORY: chapter/chapter-02
+
+        Found 3 backup(s):
+
+        ID: 45 | 2025-11-12 16:30:00 | regeneration | ✓ exists
+          File: .../backups/plan-2025-11-12-16-30-00.md
+          Version: f9e8d7c6...
+
+        ID: 42 | 2025-11-12 15:30:45 | manual | ✓ exists
+          File: .../backups/plan-2025-11-12-15-30-45.md
+          Version: a1b2c3d4...
+    """
+    if not PLANNING_STATE_AVAILABLE:
+        return "❌ ERROR: Planning state module not available"
+
+    try:
+        result = list_backups(params.entity_type, params.entity_id)
+
+        if not result['success']:
+            return f"❌ ERROR: {result['message']}"
+
+        lines = [
+            f"📦 BACKUP HISTORY: {params.entity_type}/{params.entity_id}",
+            ""
+        ]
+
+        if result['count'] == 0:
+            lines.append("No backups found for this entity.")
+            lines.append("")
+            lines.append("💡 Create a backup:")
+            lines.append(f"  create_backup(entity_type='{params.entity_type}', entity_id='{params.entity_id}')")
+            return "\n".join(lines)
+
+        lines.append(f"Found {result['count']} backup(s):")
+        lines.append("")
+
+        for backup in result['backups']:
+            exists_marker = "✓" if backup['exists'] else "✗"
+            exists_text = "exists" if backup['exists'] else "MISSING"
+
+            lines.append(f"**ID: {backup['backup_id']}** | {backup['backed_up_at']} | {backup['reason']} | {exists_marker} {exists_text}")
+            lines.append(f"  File: {backup['backup_file_path']}")
+            lines.append(f"  Version: {backup['version_hash'][:8]}...")
+            lines.append("")
+
+        lines.append("💡 To restore a backup:")
+        lines.append(f"  restore_backup(entity_type='{params.entity_type}', entity_id='{params.entity_id}', backup_id=<ID>)")
+        lines.append("")
+        lines.append("💡 To compare backups:")
+        lines.append(f"  get_backup_diff(backup_id1=<older_ID>, backup_id2=<newer_ID>)")
+
+        return "\n".join(lines)
+
+    except Exception as e:
+        return f"❌ ERROR: Failed to list backups\n\n{str(e)}"
+
+
+@mcp.tool(
+    name="restore_backup",
+    annotations={
+        "title": "Restore Backup Version",
+        "readOnlyHint": False,
+        "destructiveHint": True,
+        "idempotentHint": False,
+        "openWorldHint": False
+    }
+)
+async def restore_backup_tool(params: RestoreBackupInput) -> str:
+    """
+    Restore a backup version of a planning file.
+
+    Creates backup of current version before restoring (safety measure).
+    Updates entity state with restored version hash.
+
+    Args:
+        params (RestoreBackupInput): Validated input containing:
+            - entity_type (str): Entity type
+            - entity_id (str): Entity ID
+            - backup_id (int): Backup ID to restore
+
+    Returns:
+        str: Success confirmation or error message
+
+    Example:
+        >>> restore_backup(entity_type='chapter', entity_id='chapter-02', backup_id=42)
+        ✅ BACKUP RESTORED SUCCESSFULLY
+
+        Entity: chapter/chapter-02
+        Restored from: backup #42 (2025-11-12 15:30:45)
+        Current version backed up as: backup #48
+
+        ⚠️  WARNING: Restoring older version may invalidate child plans
+
+        If this entity has approved children, they may need revalidation.
+    """
+    if not PLANNING_STATE_AVAILABLE:
+        return "❌ ERROR: Planning state module not available"
+
+    try:
+        result = restore_backup(params.entity_type, params.entity_id, params.backup_id)
+
+        if not result['success']:
+            return f"❌ ERROR: Restore failed\n\n{result['message']}"
+
+        lines = [
+            f"✅ BACKUP RESTORED SUCCESSFULLY",
+            "",
+            f"**Entity**: {params.entity_type}/{params.entity_id}",
+            f"**Restored from**: backup #{params.backup_id}",
+            f"**File**: {result['restored_from']}",
+            f"**Version**: {result['version_hash'][:8]}...",
+            ""
+        ]
+
+        if 'current_version_backup_id' in result:
+            lines.append(f"**Current version backed up as**: backup #{result['current_version_backup_id']}")
+            lines.append("")
+
+        lines.append("⚠️  **WARNING**: Restoring older version may invalidate child plans")
+        lines.append("")
+        lines.append("If this entity has approved children, they may need revalidation.")
+        lines.append("The invalidation_cascade_hook will mark descendants as requires-revalidation.")
+        lines.append("")
+        lines.append("💡 Next steps:")
+        lines.append("  1. Review restored content")
+        lines.append("  2. Check if children need revalidation: /revalidate-all")
+        lines.append(f"  3. Approve if satisfied: approve_entity(entity_type='{params.entity_type}', entity_id='{params.entity_id}')")
+
+        return "\n".join(lines)
+
+    except Exception as e:
+        return f"❌ ERROR: Restore failed\n\n{str(e)}"
+
+
+@mcp.tool(
+    name="get_backup_diff",
+    annotations={
+        "title": "Compare Backup Versions",
+        "readOnlyHint": True,
+        "destructiveHint": False,
+        "idempotentHint": True,
+        "openWorldHint": False
+    }
+)
+async def get_backup_diff_tool(params: GetBackupDiffInput) -> str:
+    """
+    Get unified diff between two backup versions.
+
+    Compares content of two backups and shows differences.
+    Useful for understanding what changed between versions.
+
+    Args:
+        params (GetBackupDiffInput): Validated input containing:
+            - backup_id1 (int): First backup ID (typically older)
+            - backup_id2 (int): Second backup ID (typically newer)
+
+    Returns:
+        str: Unified diff output or error message
+
+    Example:
+        >>> get_backup_diff(backup_id1=42, backup_id2=45)
+        📊 BACKUP COMPARISON
+
+        Backup #42 (older):
+          Entity: chapter/chapter-02
+          Date: 2025-11-12 15:30:45
+          Version: a1b2c3d4...
+
+        Backup #45 (newer):
+          Entity: chapter/chapter-02
+          Date: 2025-11-12 16:30:00
+          Version: f9e8d7c6...
+
+        [unified diff output...]
+    """
+    if not PLANNING_STATE_AVAILABLE:
+        return "❌ ERROR: Planning state module not available"
+
+    try:
+        result = get_backup_diff(params.backup_id1, params.backup_id2)
+
+        if not result['success']:
+            return f"❌ ERROR: Diff generation failed\n\n{result['message']}"
+
+        b1 = result['backup1']
+        b2 = result['backup2']
+
+        lines = [
+            f"📊 BACKUP COMPARISON",
+            "",
+            f"**Backup #{b1['backup_id']}** (older):",
+            f"  Entity: {b1['entity_type']}/{b1['entity_id']}",
+            f"  Date: {b1['backed_up_at']}",
+            f"  Version: {b1['version_hash'][:8]}...",
+            "",
+            f"**Backup #{b2['backup_id']}** (newer):",
+            f"  Entity: {b2['entity_type']}/{b2['entity_id']}",
+            f"  Date: {b2['backed_up_at']}",
+            f"  Version: {b2['version_hash'][:8]}...",
+            "",
+            "═══════════════════════════════════════════════════════════",
+            "UNIFIED DIFF",
+            "═══════════════════════════════════════════════════════════",
+            ""
+        ]
+
+        if result['diff']:
+            lines.append(result['diff'])
+        else:
+            lines.append("No differences found - files are identical.")
+
+        lines.append("")
+        lines.append("═══════════════════════════════════════════════════════════")
+
+        return "\n".join(lines)
+
+    except Exception as e:
+        return f"❌ ERROR: Diff generation failed\n\n{str(e)}"
 
 
 # Main entry point
