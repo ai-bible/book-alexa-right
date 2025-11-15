@@ -41,14 +41,14 @@ def extract_entity_info_from_path(file_path: str) -> dict | None:
     if match := re.search(r'acts/(act-\d+)/strategic-plan\.md', file_path):
         return {
             'entity_type': 'act',
-            'entity_id': match.group(1)
+            'entity_id': match[1]
         }
 
     # Chapter planning
     if match := re.search(r'acts/(act-\d+)/chapters/(chapter-\d+)/plan\.md', file_path):
         return {
             'entity_type': 'chapter',
-            'entity_id': match.group(2)
+            'entity_id': match[2]
         }
 
     # Scene planning (no children, skip)

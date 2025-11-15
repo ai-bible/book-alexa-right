@@ -62,7 +62,7 @@ def extract_entity_info_from_path(file_path: str) -> dict | None:
     if match := re.search(r'acts/(act-\d+)/strategic-plan\.md', file_path):
         return {
             'entity_type': 'act',
-            'entity_id': match.group(1),
+            'entity_id': match[1],
             'parent_type': None,
             'parent_id': None
         }
@@ -71,18 +71,18 @@ def extract_entity_info_from_path(file_path: str) -> dict | None:
     if match := re.search(r'acts/(act-\d+)/chapters/(chapter-\d+)/plan\.md', file_path):
         return {
             'entity_type': 'chapter',
-            'entity_id': match.group(2),
+            'entity_id': match[2],
             'parent_type': 'act',
-            'parent_id': match.group(1)
+            'parent_id': match[1]
         }
 
     # Scene planning
     if match := re.search(r'acts/(act-\d+)/chapters/(chapter-\d+)/scenes/(scene-\d+)-blueprint\.md', file_path):
         return {
             'entity_type': 'scene',
-            'entity_id': match.group(3),
+            'entity_id': match[3],
             'parent_type': 'chapter',
-            'parent_id': match.group(2)
+            'parent_id': match[2]
         }
 
     return None

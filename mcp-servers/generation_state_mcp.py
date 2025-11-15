@@ -15,7 +15,7 @@ Features:
 State files are stored as: workspace/generation-state-{scene_id}.json
 """
 
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Literal
 from enum import Enum
 from pathlib import Path
 from datetime import datetime, timezone
@@ -564,10 +564,9 @@ class GetEntityStateInput(BaseModel):
         extra='forbid'
     )
 
-    entity_type: str = Field(
+    entity_type: Literal['act', 'chapter', 'scene'] = Field(
         ...,
-        description="Type of entity: 'act', 'chapter', or 'scene'",
-        pattern=r"^(act|chapter|scene)$"
+        description="Type of entity: 'act', 'chapter', or 'scene'"
     )
     entity_id: str = Field(
         ...,
@@ -585,10 +584,9 @@ class UpdateEntityStateInput(BaseModel):
         extra='forbid'
     )
 
-    entity_type: str = Field(
+    entity_type: Literal['act', 'chapter', 'scene'] = Field(
         ...,
-        description="Type of entity: 'act', 'chapter', or 'scene'",
-        pattern=r"^(act|chapter|scene)$"
+        description="Type of entity: 'act', 'chapter', or 'scene'"
     )
     entity_id: str = Field(
         ...,
@@ -2838,8 +2836,15 @@ async def get_hierarchy_tree_tool(params: GetHierarchyTreeInput) -> str:
                 if chapter_state:
                     chapters.append(chapter_state)
 
-        # Sort chapters by ID
-        chapters.sort(key=lambda c: c['entity_id'])
+        # Sort chapters by numeric portion of ID for natural order
+        def _chapter_numeric_id(chapter):
+            # Assumes entity_id format is 'chapter-<number>'
+            try:
+                return int(chapter['entity_id'].split('-')[1])
+            except (IndexError, ValueError):
+                return 0  # fallback to 0 if format is unexpected
+
+        chapters.sort(key=_chapter_numeric_id)
 
         for i, chapter in enumerate(chapters):
             is_last_chapter = (i == len(chapters) - 1)
@@ -3114,13 +3119,12 @@ async def approve_entity_tool(params: ApproveEntityInput) -> str:
             parent_type = 'act' if params.entity_type == 'chapter' else 'chapter'
             parent_state = _get_entity_state(parent_type, parent_id)
 
-            if parent_state and parent_state['status'] != 'approved':
-                if not params.force:
-                    return f"❌ ERROR: Cannot approve {params.entity_id}\n\n" \
-                           f"Parent {parent_id} is not approved (status: {parent_state['status']})\n\n" \
-                           f"Action required:\n" \
-                           f"  1. Approve parent first: approve_entity(entity_type='{parent_type}', entity_id='{parent_id}')\n" \
-                           f"  2. Or use force=True to override"
+            if parent_state and parent_state['status'] != 'approved' and not params.force:
+                return f"❌ ERROR: Cannot approve {params.entity_id}\n\n" \
+                       f"Parent {parent_id} is not approved (status: {parent_state['status']})\n\n" \
+                       f"Action required:\n" \
+                       f"  1. Approve parent first: approve_entity(entity_type='{parent_type}', entity_id='{parent_id}')\n" \
+                       f"  2. Or use force=True to override"
 
         # Update status to approved
         success = _update_entity_state(

@@ -100,7 +100,7 @@ def get_db_connection():
     except sqlite3.Error as e:
         if conn:
             conn.rollback()
-        raise RuntimeError(f"Database error: {e}")
+        raise RuntimeError(f"Database error: {e}") from e
     finally:
         if conn:
             conn.close()
@@ -136,7 +136,7 @@ def calculate_version_hash(file_path: str | Path) -> str:
         hash_obj = hashlib.sha256(content)
         return hash_obj.hexdigest()
     except Exception as e:
-        raise RuntimeError(f"Failed to hash file {file_path}: {e}")
+        raise RuntimeError(f"Failed to hash file {file_path}: {e}") from e
 
 
 # =============================================================================
