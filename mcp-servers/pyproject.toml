@@ -1,0 +1,27 @@
+# UV-managed dependencies for MCP servers
+# This is a workspace project, not a distributable package
+
+[project]
+name = "mcp-servers"
+version = "1.0.0"
+description = "MCP servers for AI-assisted writing system"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "mcp>=1.0.0",
+    "pydantic>=2.0.0",
+]
+
+[tool.uv]
+package = false  # Not a distributable package, just a workspace
+dev-dependencies = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+asyncio_mode = "auto"
