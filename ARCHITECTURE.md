@@ -120,6 +120,186 @@ update_workflow_state(
 )
 ```
 
+## 🏛️ Hierarchical Planning Architecture (FEAT-0003)
+
+### Трёхуровневая иерархия
+
+```
+Act (Акт)
+  ↓
+Chapter (Глава)
+  ↓
+Scene (Сцена)
+```
+
+**Ключевые принципы**:
+- **Parent-Child Validation**: нельзя планировать child без approved parent
+- **Cascade Invalidation**: изменение parent автоматически инвалидирует всех descendants
+- **Version Tracking**: SHA-256 хэши для отслеживания изменений
+- **Status Flow**: draft → approved → requires-revalidation → invalid
+
+### Entity Status Flow
+
+```
+draft                    (создан, но не утверждён)
+  ↓ approve_entity()
+approved                 (утверждён, можно планировать children)
+  ↓ parent version changed
+requires-revalidation    (требует пересмотра после изменения parent)
+  ↓ manual mark
+invalid                  (помечен как недействительный)
+```
+
+### Hierarchical Commands
+
+```bash
+# Planning (top-down)
+/plan-act 1                    # План всего акта (root level)
+/plan-chapter 1 --act 1        # План главы (requires approved act)
+/plan-scene 0101 --chapter 1   # Blueprint сцены (requires approved chapter)
+
+# Approval
+/approve-plan act-1            # Утвердить акт
+/approve-plan chapter-01       # Утвердить главу (parent must be approved)
+/approve-plan scene-0101       # Утвердить сцену
+
+# Revalidation
+/revalidate-scene 0101         # Интерактивная ревалидация
+/revalidate-all --act 1        # Batch ревалидация
+
+# Version Management
+/list-versions scene scene-0101      # История версий
+/restore-version scene scene-0101 5  # Восстановить версию
+/diff-version 5 6                    # Сравнить версии
+
+# Utilities
+/rebuild-state                 # Восстановить состояние из файлов
+/show-hierarchy --act 1        # Визуализация иерархии
+```
+
+### State Storage
+
+**SQLite Database** (`workspace/planning-state.db`):
+```sql
+planning_entities (
+    entity_type, entity_id (PK),
+    status, version_hash, previous_version_hash,
+    file_path, parent_id, parent_version_hash,
+    invalidation_reason, invalidated_at,
+    created_at, updated_at, metadata
+)
+
+planning_entity_backups (
+    backup_id (PK), entity_type, entity_id,
+    version_hash, backup_file_path,
+    backed_up_at, reason
+)
+```
+
+**JSON Fallback** (`workspace/planning-state/*.json`):
+- Graceful degradation если SQLite недоступен
+- Human-readable backup
+- One file per entity
+
+### Hook Pipeline
+
+```
+File Write/Edit Operation (planning file)
+    ↓
+[PreToolUse] hierarchy_validation_hook
+    → Blocks if parent not approved
+    ↓
+Operation Executes
+    ↓
+[PostToolUse] state_sync_hook
+    → Auto-syncs file → MCP state
+    → Calculates version hash
+    ↓
+[PostToolUse] consistency_check_hook
+    → Warns about parent version mismatch (non-blocking)
+    ↓
+[PostToolUse] invalidation_cascade_hook
+    → Detects parent version change
+    → Marks all descendants requires-revalidation
+```
+
+**Hook Execution Order**: validation → sync → consistency → cascade
+
+### Cascade Invalidation Example
+
+```
+User edits act-1/strategic-plan.md (version changes)
+    ↓
+invalidation_cascade_hook detects version change
+    ↓
+Marks all descendants requires-revalidation:
+  - chapter-01 (status: approved → requires-revalidation)
+  - chapter-02 (status: approved → requires-revalidation)
+    ↓
+  - scene-0101 (cascades through chapter-01)
+  - scene-0102
+  - scene-0201 (cascades through chapter-02)
+    ↓
+User runs /revalidate-all --act 1
+    ↓
+Reviews each entity, decides:
+  - Keep & approve (no changes needed)
+  - Edit blueprint
+  - Regenerate (creates backup first)
+```
+
+### Backup System
+
+**Automatic Backups**:
+- **Regeneration**: Before regenerating plan
+- **Restore**: Before restoring old version
+
+**Manual Backups**:
+```bash
+create_backup(entity_type='scene', entity_id='scene-0101', reason='manual')
+```
+
+**Backup Naming**:
+```
+acts/act-1/backups/
+  ├── strategic-plan-2025-11-15-14-30-45.md
+  └── strategic-plan-2025-11-10-09-15-20.md
+
+acts/act-1/chapters/chapter-01/backups/
+  ├── plan-2025-11-14-16-20-10.md
+  └── plan-2025-11-12-11-45-30.md
+```
+
+### Recovery & Utilities
+
+**Database Corruption**:
+```bash
+/rebuild-state --dry-run   # Preview rebuild
+/rebuild-state             # Rebuild from files (10-30s)
+```
+
+**Lost Planning State**:
+1. Check Git history: `git log --all --full-history -- "workspace/planning-state/*"`
+2. Restore from Git if available
+3. Otherwise: `/rebuild-state` reconstructs from files
+
+**Hierarchy Visualization**:
+```bash
+/show-hierarchy --act 1
+```
+Output:
+```
+act-1 [approved] ✓
+├── chapter-01 [approved] ✓
+│   ├── scene-0101 [approved] ✓
+│   ├── scene-0102 [requires-revalidation] ⚠️
+│   └── scene-0103 [draft] 📝
+└── chapter-02 [draft] 📝
+    └── scene-0201 [draft] 📝
+
+Summary: 3/5 approved, 1 requires revalidation, 2 draft
+```
+
 ## 🎯 Key Design Patterns
 
 ### 1. Copy-on-Write Sessions
@@ -244,20 +424,69 @@ System: Продолжаю с Step 4 (3 steps skipped)
 - Human approval flow
 - Resume/cancel workflows
 
-**generation_state_mcp.py** (DEPRECATED)
-- Legacy state tracking
-- Заменяется на workflow_orchestration_mcp
-- Оставлен для обратной совместимости
+**generation_state_mcp.py** (FEAT-0002 + FEAT-0003)
+- **Scene Generation State** (FEAT-0002):
+  - Generation workflow tracking
+  - Resume failed workflows
+  - Step-by-step progress monitoring
+- **Hierarchical Planning State** (FEAT-0003):
+  - 10 MCP tools для управления состоянием планирования
+  - Entity state tracking (act/chapter/scene)
+  - Hierarchy queries & cascade invalidation
+  - Version management & backup system
+  - Approval workflow
+
+**MCP Tools (Planning State)**:
+- `get_entity_state`, `update_entity_state` - CRUD operations
+- `get_hierarchy_tree`, `get_children_status` - Hierarchy queries
+- `cascade_invalidate`, `approve_entity` - State transitions
+- `create_backup`, `list_backups`, `restore_backup`, `get_backup_diff` - Version control
 
 ### Hooks
 
-**.claude/hooks/path_interceptor_hook.py** (OBSERVABILITY)
-- PostToolUse hook (non-blocking)
+**Hierarchical Planning Hooks** (FEAT-0003):
+
+**.claude/hooks/hierarchy_validation_hook.py** (PreToolUse, BLOCKING)
+- Blocks planning if parent not approved
+- Enforces top-down planning order
+- **Trigger**: Before Write/Edit on planning files
+- **Effect**: BLOCKS operation if parent status ≠ approved
+
+**.claude/hooks/state_sync_hook.py** (PostToolUse, NON-BLOCKING)
+- Auto-syncs file changes → MCP state
+- Calculates version hashes (SHA-256)
+- Preserves entity status on edits
+- **Trigger**: After Write/Edit on planning files
+- **Effect**: Updates planning_state database
+
+**.claude/hooks/consistency_check_hook.py** (PostToolUse, NON-BLOCKING)
+- Warns about parent version mismatches
+- Suggests revalidation when needed
+- **Trigger**: After Write/Edit on planning files
+- **Effect**: Shows warnings (operation allowed)
+
+**.claude/hooks/invalidation_cascade_hook.py** (PostToolUse, NON-BLOCKING)
+- Detects parent version changes
+- Auto-cascades to all descendants
+- Transaction-based marking
+- **Trigger**: After Write/Edit on act/chapter plans
+- **Effect**: Marks descendants requires-revalidation
+
+**Shared Utilities**:
+
+**.claude/hooks/planning_path_utils.py**
+- Shared path parsing functions
+- Canonical entity extraction logic
+- Used by all 4 planning hooks
+- Prevents code duplication
+
+**Observability Hook**:
+
+**.claude/hooks/path_interceptor_hook.py** (PostToolUse, NON-BLOCKING)
 - Показывает AI путевое разрешение
 - Информирует о CoW статусе
 - Graceful degradation on errors
-
-**Trigger**: После Read, Write, Edit, Glob операций
+- **Trigger**: После Read, Write, Edit, Glob операций
 
 **Output Example**:
 ```
@@ -469,12 +698,24 @@ Scene: acts/act-1/chapters/chapter-01/content/scene-0101.md
 
 ### Internal Documentation
 
+**Core Documentation**:
 - [README.md](README.md) - User guide
+- [CLAUDE.md](CLAUDE.md) - AI assistant instructions & workflow router
 - [.workflows/planning.md](.workflows/planning.md) - Planning workflow
 - [.workflows/generation.md](.workflows/generation.md) - Generation workflow
+- [.workflows/testing-checklist.md](.workflows/testing-checklist.md) - Testing procedures
 - [.workflows/agents-reference.md](.workflows/agents-reference.md) - Agent catalog
+
+**Component Documentation**:
 - [mcp-servers/README.md](mcp-servers/README.md) - MCP servers documentation
 - [.claude/hooks/README.md](.claude/hooks/README.md) - Hooks documentation
+
+**Feature Documentation**:
+- [features/FEAT-0003-hierarchical-planning/](features/FEAT-0003-hierarchical-planning/)
+  - [technical-design.md](features/FEAT-0003-hierarchical-planning/technical-design.md) - Design specification
+  - [IMPLEMENTATION-COMPLETE.md](features/FEAT-0003-hierarchical-planning/IMPLEMENTATION-COMPLETE.md) - Implementation summary
+  - [CODE-REVIEW-RESPONSE.md](features/FEAT-0003-hierarchical-planning/CODE-REVIEW-RESPONSE.md) - Code review resolution
+- [docs/emergency-recovery.md](docs/emergency-recovery.md) - Emergency recovery procedures
 
 ### External Resources
 
@@ -549,6 +790,42 @@ Scene: acts/act-1/chapters/chapter-01/content/scene-0101.md
 
 ---
 
-**Last Updated**: 2025-11-10
-**Version**: Phase 4 (Workflow Orchestration)
+## 📋 Implementation Status
+
+### ✅ Completed Features
+
+**FEAT-0001**: Scene Generation Workflow (v2.0)
+- 7-step generation workflow with auto-retry
+- Blueprint validation & compliance checking
+- Fast-fail + full validation
+
+**FEAT-0002**: Generation State Tracking
+- Resume failed workflows
+- Real-time progress monitoring
+- State persistence & recovery
+
+**FEAT-0003**: Hierarchical Planning Architecture ⭐ NEW
+- 3-level hierarchy (Act → Chapter → Scene)
+- Parent-child validation & cascade invalidation
+- Version management & backup system
+- 10 MCP tools + 4 hooks + 12 commands
+- Emergency recovery procedures
+
+**FEAT-0004**: Workflow Orchestration (Phase 4)
+- Sequential enforcement
+- Human-in-the-loop approval
+- State transitions & validation
+- Resume capability
+
+### 🚧 In Development
+
+**Phase 5**: Advanced Features (Planned)
+- Parallel scene generation
+- Multi-chapter planning
+- Character consistency checker
+
+---
+
+**Last Updated**: 2025-11-15
+**Version**: Phase 4 + FEAT-0003 (Hierarchical Planning)
 **Maintainers**: AI-assisted writing system team
