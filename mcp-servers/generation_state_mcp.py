@@ -97,6 +97,31 @@ class ErrorSeverity(str, Enum):
 
 # Pydantic Models for Input Validation
 
+# Common config for all models
+COMMON_CONFIG = ConfigDict(
+    str_strip_whitespace=True,
+    validate_assignment=True,
+    extra='forbid'
+)
+
+
+# Base models for common patterns
+class BaseEntityInput(BaseModel):
+    """Base model for entity-related inputs with common fields."""
+    model_config = COMMON_CONFIG
+
+    entity_type: Literal['act', 'chapter', 'scene'] = Field(
+        ...,
+        description="Type of entity: 'act', 'chapter', or 'scene'"
+    )
+    entity_id: str = Field(
+        ...,
+        description="Entity ID (e.g., 'act-1', 'chapter-02', 'scene-0204')",
+        min_length=1,
+        max_length=50
+    )
+
+
 class ResumeGenerationInput(BaseModel):
     """Input model for resume_generation tool."""
     model_config = ConfigDict(
@@ -556,44 +581,13 @@ class LogQuestionAnswerInput(BaseModel):
 # FEAT-0003: Hierarchical Planning State Input Models
 # =============================================================================
 
-class GetEntityStateInput(BaseModel):
+class GetEntityStateInput(BaseEntityInput):
     """Input model for get_entity_state tool."""
-    model_config = ConfigDict(
-        str_strip_whitespace=True,
-        validate_assignment=True,
-        extra='forbid'
-    )
-
-    entity_type: Literal['act', 'chapter', 'scene'] = Field(
-        ...,
-        description="Type of entity: 'act', 'chapter', or 'scene'"
-    )
-    entity_id: str = Field(
-        ...,
-        description="Entity ID (e.g., 'act-1', 'chapter-02', 'scene-0204')",
-        min_length=1,
-        max_length=50
-    )
+    pass  # Inherits entity_type and entity_id from BaseEntityInput
 
 
-class UpdateEntityStateInput(BaseModel):
+class UpdateEntityStateInput(BaseEntityInput):
     """Input model for update_entity_state tool."""
-    model_config = ConfigDict(
-        str_strip_whitespace=True,
-        validate_assignment=True,
-        extra='forbid'
-    )
-
-    entity_type: Literal['act', 'chapter', 'scene'] = Field(
-        ...,
-        description="Type of entity: 'act', 'chapter', or 'scene'"
-    )
-    entity_id: str = Field(
-        ...,
-        description="Entity ID",
-        min_length=1,
-        max_length=50
-    )
     status: str = Field(
         ...,
         description="Status: 'draft', 'approved', 'requires-revalidation', 'invalid'",
@@ -648,25 +642,8 @@ class GetHierarchyTreeInput(BaseModel):
     )
 
 
-class CascadeInvalidateInput(BaseModel):
+class CascadeInvalidateInput(BaseEntityInput):
     """Input model for cascade_invalidate tool."""
-    model_config = ConfigDict(
-        str_strip_whitespace=True,
-        validate_assignment=True,
-        extra='forbid'
-    )
-
-    entity_type: str = Field(
-        ...,
-        description="Type of entity: 'act', 'chapter', or 'scene'",
-        pattern=r"^(act|chapter|scene)$"
-    )
-    entity_id: str = Field(
-        ...,
-        description="Entity ID",
-        min_length=1,
-        max_length=50
-    )
     reason: str = Field(
         ...,
         description="Invalidation reason (e.g., 'parent_chapter_regenerated')",
@@ -696,96 +673,29 @@ class GetChildrenStatusInput(BaseModel):
     )
 
 
-class ApproveEntityInput(BaseModel):
+class ApproveEntityInput(BaseEntityInput):
     """Input model for approve_entity tool."""
-    model_config = ConfigDict(
-        str_strip_whitespace=True,
-        validate_assignment=True,
-        extra='forbid'
-    )
-
-    entity_type: str = Field(
-        ...,
-        description="Type of entity: 'act', 'chapter', or 'scene'",
-        pattern=r"^(act|chapter|scene)$"
-    )
-    entity_id: str = Field(
-        ...,
-        description="Entity ID",
-        min_length=1,
-        max_length=50
-    )
     force: bool = Field(
         default=False,
         description="Approve even with warnings"
     )
 
 
-class CreateBackupInput(BaseModel):
+class CreateBackupInput(BaseEntityInput):
     """Input model for create_backup tool."""
-    model_config = ConfigDict(
-        str_strip_whitespace=True,
-        validate_assignment=True,
-        extra='forbid'
-    )
-
-    entity_type: str = Field(
-        ...,
-        description="Type of entity: 'act', 'chapter', or 'scene'",
-        pattern=r"^(act|chapter|scene)$"
-    )
-    entity_id: str = Field(
-        ...,
-        description="Entity ID",
-        min_length=1,
-        max_length=50
-    )
     reason: str = Field(
         default="manual",
         description="Reason for backup: 'regeneration', 'manual', 'restore'"
     )
 
 
-class ListBackupsInput(BaseModel):
+class ListBackupsInput(BaseEntityInput):
     """Input model for list_backups tool."""
-    model_config = ConfigDict(
-        str_strip_whitespace=True,
-        validate_assignment=True,
-        extra='forbid'
-    )
-
-    entity_type: str = Field(
-        ...,
-        description="Type of entity: 'act', 'chapter', or 'scene'",
-        pattern=r"^(act|chapter|scene)$"
-    )
-    entity_id: str = Field(
-        ...,
-        description="Entity ID",
-        min_length=1,
-        max_length=50
-    )
+    pass  # Inherits entity_type and entity_id from BaseEntityInput
 
 
-class RestoreBackupInput(BaseModel):
+class RestoreBackupInput(BaseEntityInput):
     """Input model for restore_backup tool."""
-    model_config = ConfigDict(
-        str_strip_whitespace=True,
-        validate_assignment=True,
-        extra='forbid'
-    )
-
-    entity_type: str = Field(
-        ...,
-        description="Type of entity: 'act', 'chapter', or 'scene'",
-        pattern=r"^(act|chapter|scene)$"
-    )
-    entity_id: str = Field(
-        ...,
-        description="Entity ID",
-        min_length=1,
-        max_length=50
-    )
     backup_id: int = Field(
         ...,
         description="Backup ID to restore",

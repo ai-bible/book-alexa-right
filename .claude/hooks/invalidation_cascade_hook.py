@@ -23,6 +23,9 @@ import json
 import os
 import re
 
+# Import shared path parsing utilities
+from planning_path_utils import extract_entity_info_for_cascade
+
 # MCP tool available?
 try:
     sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'mcp-servers'))
@@ -33,29 +36,6 @@ try:
     MCP_AVAILABLE = True
 except ImportError:
     MCP_AVAILABLE = False
-
-
-def extract_entity_info_from_path(file_path: str) -> dict | None:
-    """Extract entity type and ID from file path."""
-    # Act planning
-    if match := re.search(r'acts/(act-\d+)/strategic-plan\.md', file_path):
-        return {
-            'entity_type': 'act',
-            'entity_id': match[1]
-        }
-
-    # Chapter planning
-    if match := re.search(r'acts/(act-\d+)/chapters/(chapter-\d+)/plan\.md', file_path):
-        return {
-            'entity_type': 'chapter',
-            'entity_id': match[2]
-        }
-
-    # Scene planning (no children, skip)
-    if re.search(r'scenes/scene-\d+-blueprint\.md', file_path):
-        return None
-
-    return None
 
 
 def should_cascade_invalidate(entity_info: dict) -> tuple[bool, str, str]:
@@ -150,19 +130,11 @@ def main():
     if not file_path:
         sys.exit(0)
 
-    # Check if planning file (exclude scenes - they have no children)
-    planning_patterns = [
-        r'acts/act-\d+/strategic-plan\.md',
-        r'acts/act-\d+/chapters/chapter-\d+/plan\.md'
-    ]
-
-    is_planning_file = any(re.search(pattern, file_path) for pattern in planning_patterns)
-    if not is_planning_file:
-        sys.exit(0)
-
-    # Extract entity info
-    entity_info = extract_entity_info_from_path(file_path)
+    # Extract entity info (for cascade - only acts and chapters, not scenes)
+    # This returns None for scenes and non-planning files
+    entity_info = extract_entity_info_for_cascade(file_path)
     if not entity_info:
+        # Not a file that can trigger cascade (scene or non-planning file)
         sys.exit(0)
 
     # Check if cascade needed

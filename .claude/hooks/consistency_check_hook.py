@@ -27,6 +27,9 @@ import os
 import re
 from pathlib import Path
 
+# Import shared path parsing utilities
+from planning_path_utils import extract_entity_info_from_path, is_planning_file
+
 # MCP tool available?
 try:
     sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'mcp-servers'))
@@ -38,38 +41,6 @@ try:
     MCP_AVAILABLE = True
 except ImportError:
     MCP_AVAILABLE = False
-
-
-def extract_entity_info_from_path(file_path: str) -> dict | None:
-    """Extract entity type, ID, and parent from file path."""
-    # Act planning
-    if match := re.search(r'acts/(act-\d+)/strategic-plan\.md', file_path):
-        return {
-            'entity_type': 'act',
-            'entity_id': match[1],
-            'parent_type': None,
-            'parent_id': None
-        }
-
-    # Chapter planning
-    if match := re.search(r'acts/(act-\d+)/chapters/(chapter-\d+)/plan\.md', file_path):
-        return {
-            'entity_type': 'chapter',
-            'entity_id': match[2],
-            'parent_type': 'act',
-            'parent_id': match[1]
-        }
-
-    # Scene planning
-    if match := re.search(r'acts/(act-\d+)/chapters/(chapter-\d+)/scenes/(scene-\d+)-blueprint\.md', file_path):
-        return {
-            'entity_type': 'scene',
-            'entity_id': match[3],
-            'parent_type': 'chapter',
-            'parent_id': match[2]
-        }
-
-    return None
 
 
 def check_consistency(entity_info: dict) -> list[str]:
@@ -177,14 +148,7 @@ def main():
         sys.exit(0)
 
     # Check if planning file
-    planning_patterns = [
-        r'acts/act-\d+/strategic-plan\.md',
-        r'acts/act-\d+/chapters/chapter-\d+/plan\.md',
-        r'acts/act-\d+/chapters/chapter-\d+/scenes/scene-\d+-blueprint\.md'
-    ]
-
-    is_planning_file = any(re.search(pattern, file_path) for pattern in planning_patterns)
-    if not is_planning_file:
+    if not is_planning_file(file_path):
         sys.exit(0)
 
     # Extract entity info

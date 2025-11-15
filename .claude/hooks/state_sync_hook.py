@@ -24,13 +24,11 @@ import os
 import re
 from pathlib import Path
 
+# Import shared path parsing utilities
+from planning_path_utils import extract_entity_info_from_path, is_planning_file
+
 # Constants
 TOOL_NAME_PATTERN = re.compile(r'^(Write|Edit)$')
-PLANNING_FILE_PATTERNS = [
-    r'acts/act-\d+/strategic-plan\.md',
-    r'acts/act-\d+/chapters/chapter-\d+/plan\.md',
-    r'acts/act-\d+/chapters/chapter-\d+/scenes/scene-\d+-blueprint\.md'
-]
 
 # MCP tool available?
 try:
@@ -44,35 +42,6 @@ try:
     MCP_AVAILABLE = True
 except ImportError:
     MCP_AVAILABLE = False
-
-
-def extract_entity_info_from_path(file_path: str) -> dict | None:
-    """Extract entity type, ID, and parent from file path."""
-    # Act planning
-    if match := re.search(r'acts/(act-\d+)/strategic-plan\.md', file_path):
-        return {
-            'entity_type': 'act',
-            'entity_id': match[1],
-            'parent_id': None
-        }
-
-    # Chapter planning
-    if match := re.search(r'acts/(act-\d+)/chapters/(chapter-\d+)/plan\.md', file_path):
-        return {
-            'entity_type': 'chapter',
-            'entity_id': match[2],
-            'parent_id': match[1]
-        }
-
-    # Scene planning
-    if match := re.search(r'acts/(act-\d+)/chapters/(chapter-\d+)/scenes/(scene-\d+)-blueprint\.md', file_path):
-        return {
-            'entity_type': 'scene',
-            'entity_id': match[3],
-            'parent_id': match[2]
-        }
-
-    return None
 
 
 def sync_entity_state(file_path: str, entity_info: dict) -> tuple[bool, str]:
@@ -161,12 +130,7 @@ def main():
         sys.exit(0)
 
     # Check if this is a planning file
-    is_planning_file = any(
-        re.search(pattern, file_path)
-        for pattern in PLANNING_FILE_PATTERNS
-    )
-
-    if not is_planning_file:
+    if not is_planning_file(file_path):
         sys.exit(0)
 
     # Extract entity info

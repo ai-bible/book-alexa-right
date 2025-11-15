@@ -23,13 +23,11 @@ import os
 import re
 from pathlib import Path
 
+# Import shared path parsing utilities
+from planning_path_utils import extract_entity_info_from_path, is_planning_file
+
 # Constants
 TOOL_NAME_PATTERN = re.compile(r'^(Write|Edit)$')
-PLANNING_FILE_PATTERNS = [
-    r'acts/act-\d+/strategic-plan\.md',           # Act planning
-    r'acts/act-\d+/chapters/chapter-\d+/plan\.md', # Chapter planning
-    r'acts/act-\d+/chapters/chapter-\d+/scenes/scene-\d+-blueprint\.md'  # Scene planning
-]
 
 # MCP tool available?
 try:
@@ -39,53 +37,6 @@ try:
     MCP_AVAILABLE = True
 except ImportError:
     MCP_AVAILABLE = False
-
-
-def extract_entity_info_from_path(file_path: str) -> dict | None:
-    """
-    Extract entity type, ID, and parent from file path.
-
-    Args:
-        file_path: Path to planning file
-
-    Returns:
-        Dict with entity_type, entity_id, parent_type, parent_id or None
-
-    Examples:
-        >>> extract_entity_info_from_path('acts/act-1/strategic-plan.md')
-        {'entity_type': 'act', 'entity_id': 'act-1', 'parent_type': None, 'parent_id': None}
-
-        >>> extract_entity_info_from_path('acts/act-1/chapters/chapter-02/plan.md')
-        {'entity_type': 'chapter', 'entity_id': 'chapter-02', 'parent_type': 'act', 'parent_id': 'act-1'}
-    """
-    # Act planning
-    if match := re.search(r'acts/(act-\d+)/strategic-plan\.md', file_path):
-        return {
-            'entity_type': 'act',
-            'entity_id': match[1],
-            'parent_type': None,
-            'parent_id': None
-        }
-
-    # Chapter planning
-    if match := re.search(r'acts/(act-\d+)/chapters/(chapter-\d+)/plan\.md', file_path):
-        return {
-            'entity_type': 'chapter',
-            'entity_id': match[2],
-            'parent_type': 'act',
-            'parent_id': match[1]
-        }
-
-    # Scene planning
-    if match := re.search(r'acts/(act-\d+)/chapters/(chapter-\d+)/scenes/(scene-\d+)-blueprint\.md', file_path):
-        return {
-            'entity_type': 'scene',
-            'entity_id': match[3],
-            'parent_type': 'chapter',
-            'parent_id': match[2]
-        }
-
-    return None
 
 
 def check_parent_approved(parent_type: str, parent_id: str) -> tuple[bool, str]:
@@ -148,12 +99,7 @@ def main():
         sys.exit(0)
 
     # Check if this is a planning file
-    is_planning_file = any(
-        re.search(pattern, file_path)
-        for pattern in PLANNING_FILE_PATTERNS
-    )
-
-    if not is_planning_file:
+    if not is_planning_file(file_path):
         # Not a planning file - allow
         sys.exit(0)
 
