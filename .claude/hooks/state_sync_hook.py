@@ -68,10 +68,8 @@ def sync_entity_state(file_path: str, entity_info: dict) -> tuple[bool, str]:
         # Calculate version hash
         version_hash = calculate_version_hash(abs_path)
 
-        # Check if entity already exists
-        existing_state = get_entity_state(entity_info['entity_type'], entity_info['entity_id'])
-
-        if existing_state:
+        # Check if entity already exists (using named expression)
+        if existing_state := get_entity_state(entity_info['entity_type'], entity_info['entity_id']):
             # Entity exists - preserve status
             status = existing_state['status']
             parent_version_hash = existing_state.get('parent_version_hash')
@@ -80,15 +78,14 @@ def sync_entity_state(file_path: str, entity_info: dict) -> tuple[bool, str]:
             status = STATUS_DRAFT
             parent_version_hash = None
 
-            # If has parent, get parent's version hash
+            # If has parent, get parent's version hash (using named expression)
             if entity_info['parent_id']:
                 parent_type = 'act' if entity_info['entity_type'] == 'chapter' else 'chapter'
-                parent_state = get_entity_state(parent_type, entity_info['parent_id'])
-                if parent_state:
+                if parent_state := get_entity_state(parent_type, entity_info['parent_id']):
                     parent_version_hash = parent_state['version_hash']
 
-        # Update state
-        success = update_entity_state(
+        # Update state (using named expression)
+        if success := update_entity_state(
             entity_type=entity_info['entity_type'],
             entity_id=entity_info['entity_id'],
             status=status,
@@ -96,9 +93,7 @@ def sync_entity_state(file_path: str, entity_info: dict) -> tuple[bool, str]:
             file_path=str(abs_path),
             parent_id=entity_info['parent_id'],
             parent_version_hash=parent_version_hash
-        )
-
-        if success:
+        ):
             return True, f"State updated: {entity_info['entity_id']} (status={status}, version={version_hash[:8]}...)"
         else:
             return False, f"Failed to update state for {entity_info['entity_id']}"
@@ -142,23 +137,22 @@ def main():
     # Sync state
     success, message = sync_entity_state(file_path, entity_info)
 
+    # Prepare result message
     if success:
         # Success - output info message
-        result = {
-            "allow": True,
-            "message": f"✓ Planning state synced: {message}"
-        }
-        print(json.dumps(result), flush=True)
+        result_message = f"✓ Planning state synced: {message}"
     else:
         # Failed - output warning but allow operation
-        result = {
-            "allow": True,
-            "message": f"⚠️ Warning: Could not sync planning state\n\n"
-                      f"**Reason**: {message}\n\n"
-                      f"File was modified successfully, but state tracking failed. "
-                      f"You can manually sync state using MCP tools if needed."
-        }
-        print(json.dumps(result), flush=True)
+        result_message = (
+            f"⚠️ Warning: Could not sync planning state\n\n"
+            f"**Reason**: {message}\n\n"
+            f"File was modified successfully, but state tracking failed. "
+            f"You can manually sync state using MCP tools if needed."
+        )
+
+    # Output result (hoisted from both branches)
+    result = {"allow": True, "message": result_message}
+    print(json.dumps(result), flush=True)
 
     sys.exit(0)
 

@@ -157,9 +157,7 @@ def main():
         sys.exit(0)
 
     # Check consistency
-    warnings = check_consistency(entity_info)
-
-    if warnings:
+    if warnings := check_consistency(entity_info):
         # Show warnings (non-blocking)
         warning_text = "\n\n".join(f"  • {w}" for w in warnings)
 
