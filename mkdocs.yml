@@ -1,0 +1,293 @@
+site_name: AI Writing System Documentation
+site_description: Comprehensive documentation for AI-assisted sci-fi novel writing system
+site_author: AI Bible Project
+site_url: https://ai-bible.github.io/book-alexa-right
+
+repo_name: ai-bible/book-alexa-right
+repo_url: https://github.com/ai-bible/book-alexa-right
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  language: ru
+  palette:
+    # Light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: deep purple
+      toggle:
+        icon: material/brightness-7
+        name: Переключить в тёмную тему
+    # Dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: deep purple
+      toggle:
+        icon: material/brightness-4
+        name: Переключить в светлую тему
+
+  features:
+    # Navigation
+    - navigation.instant        # SPA-like instant loading
+    - navigation.instant.progress  # Show progress indicator
+    - navigation.tracking       # URL automatically updated with active anchor
+    - navigation.tabs           # Top-level sections in horizontal tabs
+    - navigation.tabs.sticky    # Tabs always visible when scrolling
+    - navigation.sections       # Render top-level sections as groups
+    - navigation.expand         # Expand all collapsible subsections by default
+    - navigation.path           # Breadcrumbs
+    - navigation.indexes        # Section index pages
+    - navigation.top            # Back to top button
+    - navigation.footer         # Previous/next page navigation in footer
+
+    # Search
+    - search.suggest            # Search suggestions
+    - search.highlight          # Highlight search terms on target page
+    - search.share              # Share search results via URL
+
+    # Header
+    - header.autohide           # Automatically hide header when scrolling down
+
+    # Content
+    - content.code.copy         # Code copy button
+    - content.code.annotate     # Code annotations
+    - content.tabs.link         # Link content tabs across pages
+    - content.tooltips          # Improved tooltips
+
+    # Table of contents
+    - toc.follow                # Sidebar automatically scrolls with page
+    - toc.integrate             # Navigation integrated in sidebar
+
+  icon:
+    repo: fontawesome/brands/github
+    edit: material/pencil
+    view: material/eye
+
+  font:
+    text: Roboto
+    code: Roboto Mono
+
+# Extensions
+markdown_extensions:
+  # Python Markdown
+  - abbr                        # Abbreviations
+  - admonition                  # Admonition blocks (note, warning, etc.)
+  - attr_list                   # Add HTML attributes to elements
+  - def_list                    # Definition lists
+  - footnotes                   # Footnotes
+  - md_in_html                  # Markdown in HTML
+  - tables                      # Tables
+  - toc:
+      permalink: true           # Add permalink to headers
+      permalink_title: Ссылка на этот раздел
+      toc_depth: 3
+
+  # Python Markdown Extensions
+  - pymdownx.arithmatex:        # LaTeX math
+      generic: true
+  - pymdownx.betterem:          # Better emphasis handling
+      smart_enable: all
+  - pymdownx.caret              # Superscript with ^^
+  - pymdownx.mark               # Highlighting with ==
+  - pymdownx.tilde              # Strikethrough with ~~
+  - pymdownx.critic             # Track changes
+  - pymdownx.details            # Collapsible admonitions
+  - pymdownx.emoji:             # Emoji support
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - pymdownx.highlight:         # Syntax highlighting
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite       # Inline code highlighting
+  - pymdownx.keys               # Keyboard keys
+  - pymdownx.magiclink:         # Auto-link URLs
+      repo_url_shorthand: true
+      user: ai-bible
+      repo: book-alexa-right
+  - pymdownx.smartsymbols       # Smart symbols
+  - pymdownx.snippets:          # Include external files
+      auto_append:
+        - includes/abbreviations.md
+  - pymdownx.superfences:       # Code blocks with features
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:            # Content tabs
+      alternate_style: true
+  - pymdownx.tasklist:          # Task lists
+      custom_checkbox: true
+
+# Plugins
+plugins:
+  - search:
+      lang:
+        - ru
+        - en
+      separator: '[\s\-\.]+'
+  - tags:
+      tags_file: tags.md
+  - git-revision-date-localized:
+      enable_creation_date: true
+      type: timeago
+      timezone: Europe/Moscow
+      locale: ru
+  # - minify:  # Disabled due to build issues
+  #     minify_html: true
+  #     minify_js: true
+  #     minify_css: true
+  #     htmlmin_opts:
+  #       remove_comments: true
+
+# Additional CSS
+extra_css:
+  - stylesheets/extra.css
+
+# Additional JavaScript
+extra_javascript:
+  - javascripts/mathjax.js
+  - https://polyfill.io/v3/polyfill.min.js?features=es6
+  - https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js
+
+# Extra configuration
+extra:
+  version:
+    provider: mike
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/ai-bible/book-alexa-right
+  analytics:
+    feedback:
+      title: Была ли эта страница полезной?
+      ratings:
+        - icon: material/emoticon-happy-outline
+          name: Эта страница была полезна
+          data: 1
+          note: >-
+            Спасибо за отзыв!
+        - icon: material/emoticon-sad-outline
+          name: Эта страница может быть улучшена
+          data: 0
+          note: >-
+            Спасибо за отзыв! Помогите нам улучшить эту страницу,
+            открыв issue на GitHub.
+
+# Navigation structure
+nav:
+  - Главная: index.md
+
+  - Начало работы:
+    - getting-started/index.md
+    - Установка: getting-started/installation.md
+    - Быстрый старт: getting-started/quick-start.md
+    - Базовые концепции: getting-started/core-concepts.md
+    - FAQ: getting-started/faq.md
+
+  - Руководство пользователя:
+    - user-guide/index.md
+    - Планирование:
+      - user-guide/planning/index.md
+      - Обзор workflow: user-guide/planning/workflow-overview.md
+      - Команда /plan-story: user-guide/planning/plan-story-command.md
+      - Создание blueprints: user-guide/planning/creating-blueprints.md
+      - Сюжетные линии: user-guide/planning/storylines.md
+    - Генерация текста:
+      - user-guide/generation/index.md
+      - Обзор workflow: user-guide/generation/workflow-overview.md
+      - 7 шагов генерации: user-guide/generation/seven-steps.md
+      - Validation и recovery: user-guide/generation/validation-recovery.md
+      - Работа с ошибками: user-guide/generation/error-handling.md
+    - Управление сессиями:
+      - user-guide/sessions/index.md
+      - Создание сессий: user-guide/sessions/creating-sessions.md
+      - Ветвление (branching): user-guide/sessions/branching.md
+      - Copy-on-Write: user-guide/sessions/copy-on-write.md
+    - Контекст мира:
+      - user-guide/context/index.md
+      - Библия мира: user-guide/context/world-bible.md
+      - Персонажи: user-guide/context/characters.md
+      - Локации: user-guide/context/locations.md
+      - Уровни канона: user-guide/context/canon-levels.md
+    - Команды:
+      - user-guide/commands/index.md
+      - Slash-команды: user-guide/commands/slash-commands.md
+      - Generation State: user-guide/commands/generation-state.md
+      - Проверка consistency: user-guide/commands/consistency-check.md
+
+  - Техническая документация:
+    - technical/index.md
+    - Архитектура:
+      - technical/architecture/index.md
+      - Общая архитектура: technical/architecture/overview.md
+      - Planning Workflow: technical/architecture/planning-workflow.md
+      - Generation Workflow: technical/architecture/generation-workflow.md
+      - Integration Workflow: technical/architecture/integration-workflow.md
+    - Агенты:
+      - technical/agents/index.md
+      - Обзор агентов: technical/agents/overview.md
+      - Planning агенты: technical/agents/planning-agents.md
+      - Generation агенты: technical/agents/generation-agents.md
+      - Shared агенты: technical/agents/shared-agents.md
+      - Создание агентов: technical/agents/creating-agents.md
+    - MCP Серверы:
+      - technical/mcp/index.md
+      - Обзор MCP: technical/mcp/overview.md
+      - Generation State MCP: technical/mcp/generation-state.md
+      - Session Management MCP: technical/mcp/session-management.md
+      - Workflow Orchestration MCP: technical/mcp/workflow-orchestration.md
+    - Hooks система:
+      - technical/hooks/index.md
+      - Обзор hooks: technical/hooks/overview.md
+      - PreToolUse hooks: technical/hooks/pre-tool-use.md
+      - PostToolUse hooks: technical/hooks/post-tool-use.md
+      - Создание hooks: technical/hooks/creating-hooks.md
+    - Prose Style Guide:
+      - technical/prose/index.md
+      - Руководство по стилю: technical/prose/style-guide.md
+      - Литературные приёмы: technical/prose/literary-techniques.md
+
+  - Features:
+    - features/index.md
+    - FEAT-0001 - Reliable Scene Generation:
+      - features/feat-0001/index.md
+      - Техническая спецификация: features/feat-0001/technical-design.md
+      - Решения и компромиссы: features/feat-0001/decisions.md
+    - FEAT-0002 - Workflow State Tracking:
+      - features/feat-0002/index.md
+      - Спецификация: features/feat-0002/specification.md
+    - FEAT-0003 - Hierarchical Planning:
+      - features/feat-0003/index.md
+      - Техническая спецификация: features/feat-0003/technical-design.md
+      - Code Review Response: features/feat-0003/code-review-response.md
+      - Testing Checklist: features/feat-0003/testing-checklist.md
+
+  - API Reference:
+    - api/index.md
+    - MCP Tools:
+      - api/mcp-tools/index.md
+      - Generation State Tools: api/mcp-tools/generation-state.md
+      - Session Management Tools: api/mcp-tools/session-management.md
+      - Workflow Orchestration Tools: api/mcp-tools/workflow-orchestration.md
+    - Python API:
+      - api/python/index.md
+      - Utility Functions: api/python/utilities.md
+      - Data Models: api/python/models.md
+
+  - Разработка:
+    - development/index.md
+    - Настройка окружения: development/setup.md
+    - Тестирование:
+      - development/testing/index.md
+      - Manual Testing: development/testing/manual-testing.md
+      - Unit Tests: development/testing/unit-tests.md
+      - E2E Tests: development/testing/e2e-tests.md
+    - Contributing: development/contributing.md
+    - Roadmap: development/roadmap.md
+
+  - Теги: tags.md
+
+# Copyright
+copyright: Copyright &copy; 2025 AI Bible Project
