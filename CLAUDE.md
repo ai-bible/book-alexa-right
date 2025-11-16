@@ -32,6 +32,69 @@ scene-X-blueprint-v2.md, scene-X-revised.md      ← WRONG
 
 ---
 
+### Session Management - КРИТИЧНО!
+
+**⚠️ ОБЯЗАТЕЛЬНАЯ ПРОВЕРКА ПЕРЕД ЛЮБЫМИ ОПЕРАЦИЯМИ WRITE/EDIT:**
+
+**Шаг 1: ВСЕГДА проверяй активную сессию ПЕРЕД записью файлов:**
+```bash
+# Проверить активную сессию
+ls workspace/session.lock && cat workspace/session.lock
+```
+
+**Шаг 2: Если сессия НЕ активна:**
+```
+❌ STOP IMMEDIATELY!
+❌ НЕ создавай файлы напрямую в acts/, context/, или других директориях!
+❌ НЕ используй Write/Edit без активной сессии!
+
+✅ ПРАВИЛЬНЫЕ действия:
+1. Спроси пользователя создать сессию:
+   "Нужно создать сессию для изоляции изменений. Создать сессию?"
+2. После создания сессии - продолжай работу
+```
+
+**Шаг 3: С активной сессией - все файлы идут в сессию:**
+```
+✅ Правильно (с сессией "revision-act1"):
+workspace/sessions/revision-act1/acts/act-1/strategic-plan.md
+workspace/sessions/revision-act1/acts/act-1/chapters/chapter-01/plan.md
+
+❌ НЕПРАВИЛЬНО (напрямую в глобальные файлы):
+acts/act-1/strategic-plan.md           ← БЕЗ СЕССИИ = ОШИБКА!
+acts/act-1/chapters/chapter-01/plan.md ← БЕЗ СЕССИИ = ОШИБКА!
+```
+
+**Почему это критично:**
+- **Изоляция**: Изменения должны быть в сессии до коммита
+- **Откат**: Без сессии невозможно откатить изменения
+- **Copy-on-Write**: Сессии используют CoW для эффективности
+- **Hooks блокируют**: session_guard_hook.py должен блокировать Write/Edit без сессии
+
+**Если hook НЕ сработал:**
+→ Это критическая ошибка системы
+→ НЕ обходи проверку вручную
+→ Сообщи пользователю о сбое hook
+
+**Команды управления сессиями:**
+```bash
+# Создать сессию
+mcp__session_management__create_session(name="...", description="...")
+
+# Проверить активную
+mcp__session_management__get_active_session()
+
+# Закоммитить (перенести в глобальные файлы)
+mcp__session_management__commit_session(name="...")
+
+# Отменить
+mcp__session_management__cancel_session(name="...")
+```
+
+**КРИТИЧНО: Без активной сессии - НЕ пиши файлы!**
+
+---
+
 ## Workflow Router
 
 **Когда пользователь запрашивает генерацию сцены:**
