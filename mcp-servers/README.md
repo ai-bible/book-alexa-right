@@ -39,6 +39,84 @@ Model Context Protocol серверы для AI-Assisted Writing System.
 └──────────────────┘ └─────────────────┘ └──────────────┘
 ```
 
+## ⚙️ Setup & Installation
+
+### Requirements
+
+- **Python 3.13+** (managed via `uv`)
+- **uv** (fast Python package manager) - [Install guide](https://docs.astral.sh/uv/)
+
+### Quick Start
+
+```bash
+# 1. Install dependencies with uv (automatically uses Python 3.13)
+cd mcp-servers
+uv sync
+
+# 2. Run tests to verify installation
+uv run pytest
+
+# 3. Compile all MCP servers to check for syntax errors
+uv run python -m py_compile *.py
+```
+
+### Using uv
+
+This project uses [**uv**](https://github.com/astral-sh/uv) for dependency management:
+
+**Why uv?**
+- ⚡ **10-100x faster** than pip
+- 🔒 **Deterministic** dependency resolution with lockfile
+- 🐍 **Python version management** built-in (uses Python 3.13)
+- 📦 **Modern** pyproject.toml-based configuration
+
+**Common commands:**
+
+```bash
+# Install/sync dependencies
+uv sync
+
+# Run Python with managed environment
+uv run python script.py
+
+# Run tests
+uv run pytest
+
+# Add new dependency
+uv add package-name
+
+# Add dev dependency
+uv add --dev package-name
+
+# Update dependencies
+uv sync --upgrade
+```
+
+### Dependencies
+
+Managed via `pyproject.toml`:
+
+- **mcp** (>=1.0.0) - Model Context Protocol Python SDK
+- **pydantic** (>=2.0.0) - Data validation and schema generation
+
+**Dev dependencies:**
+- **pytest** (>=8.0.0) - Testing framework
+- **pytest-asyncio** (>=0.23.0) - Async test support
+
+### Migration from pip
+
+If migrating from an existing `requirements.txt` setup:
+
+```bash
+# Old way (pip)
+pip install -r requirements.txt
+
+# New way (uv) - automatically migrated
+uv sync
+```
+
+The `requirements.txt` file is kept for reference but **uv + pyproject.toml is now the primary method**.
+
 ## 📦 Установленные серверы
 
 ### 1. session_management_mcp.py ⭐ CRITICAL
@@ -516,6 +594,16 @@ StepStatus = "pending" | "in_progress" | "completed" | "failed" | "waiting_appro
 
 ---
 
-**Last Updated**: 2025-11-10
-**Version**: Phase 4 (Workflow Orchestration)
+**Last Updated**: 2025-11-15
+**Version**: Phase 4 (Workflow Orchestration) + Python 3.13 + UV migration
 **Maintainers**: AI-assisted writing system team
+
+## 📝 Changelog
+
+### 2025-11-15: UV Migration
+- ✅ Migrated to **uv** for dependency management
+- ✅ Upgraded to **Python 3.13.8**
+- ✅ Added `pyproject.toml` with modern configuration
+- ✅ All tests passing with Python 3.13
+- ✅ 10-100x faster dependency installation
+- ℹ️ `requirements.txt` kept for reference only

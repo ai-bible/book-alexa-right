@@ -8,6 +8,11 @@
             "type": "command",
             "command": "python .claude/hooks/session_guard_hook.py",
             "description": "Block file writes if no active session (session management)"
+          },
+          {
+            "type": "command",
+            "command": "python .claude/hooks/hierarchy_validation_hook.py",
+            "description": "FEAT-0003: Validate hierarchical planning constraints (block if parent not approved)"
           }
         ]
       }
@@ -25,6 +30,21 @@
             "type": "command",
             "command": "python .claude/hooks/path_interceptor_hook.py",
             "description": "Show AI path resolution info (session vs global CoW)"
+          },
+          {
+            "type": "command",
+            "command": "python .claude/hooks/state_sync_hook.py",
+            "description": "FEAT-0003: Sync planning file changes to MCP state"
+          },
+          {
+            "type": "command",
+            "command": "python .claude/hooks/consistency_check_hook.py",
+            "description": "FEAT-0003: Check consistency with parent plan (non-blocking warnings)"
+          },
+          {
+            "type": "command",
+            "command": "python .claude/hooks/invalidation_cascade_hook.py",
+            "description": "FEAT-0003: Cascade invalidation when parent plan modified"
           }
         ]
       }

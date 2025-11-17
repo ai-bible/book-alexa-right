@@ -23,7 +23,7 @@ Tools:
 - cancel_workflow: Cancel active workflow
 """
 
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP

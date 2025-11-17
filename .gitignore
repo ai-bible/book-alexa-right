@@ -34,3 +34,6 @@ Thumbs.db
 # Claude Code specific files
 .claude/settings.local.json  # Local settings not intended for sharing
 CLAUDE.local.md              # Local CLAUDE.md files not intended for sharing
+
+# MkDocs build output
+/site/
