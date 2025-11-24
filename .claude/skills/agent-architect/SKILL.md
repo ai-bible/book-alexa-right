@@ -148,24 +148,146 @@ Relevant Anthropic Documentation:
 Task:
 [Based on user's problem type: design new system / optimize existing / agent vs skill decision / fix issues]
 
-Please analyze the requirements, apply research principles (CoS, LIFT-COT), and provide:
-1. Recommended architecture
-2. Research justification
-3. Implementation guidance
-4. Potential issues and mitigations
+IMPORTANT: Write your complete analysis to a file and return only the file path.
+
+File path format: workspace/agent-architect-reports/{timestamp}-{brief-description}.md
+
+Include in your report:
+1. Executive Summary (2-3 sentences)
+2. Recommended architecture with diagrams
+3. Research justification (cite CoS, LIFT-COT principles)
+4. Implementation guidance (step-by-step)
+5. Potential issues and mitigations
+6. Next steps
+
+Return format:
+{
+  "report_path": "workspace/agent-architect-reports/...",
+  "summary": "Brief 1-sentence summary",
+  "key_recommendations": ["rec1", "rec2", "rec3"]
+}
 ```
 
-### Step 4: Present Results
-When agent-architect returns its analysis:
-- Summarize key recommendations
-- Highlight critical decisions
-- Ask if user needs clarification or wants to explore specific aspects
+### Step 4: Save Report and Present Summary
+When agent-architect returns:
+
+1. **Read the report file** using the Read tool
+2. **Present a brief summary** to the user:
+   - Executive summary (from report)
+   - Top 3 key recommendations
+   - Critical decisions requiring attention
+
+3. **Show file path**: "Full report saved to: `{path}`"
+
+### Step 5: Human-in-the-Loop Validation
+**CRITICAL: Always request user feedback before concluding.**
+
+Ask the user:
+```
+Would you like to:
+1. ✅ Approve - Accept recommendations as-is
+2. 🔄 Refine - Request changes or deeper analysis
+3. 🔍 Explore - Deep dive into specific aspects
+4. 💾 Implement - Get help implementing the architecture
+
+Please respond with the number or describe what you need.
+```
+
+**Handle user response:**
+
+- **If approved (1):**
+  - Confirm completion
+  - Offer next steps (implementation guidance, documentation, etc.)
+
+- **If refinement requested (2):**
+  - Ask what needs to change
+  - Re-launch agent-architect with:
+    - Original requirements
+    - Previous report path (for context)
+    - Specific refinement requests
+  - Save new report with `-v2`, `-v3` suffix
+  - Return to Step 4
+
+- **If exploration requested (3):**
+  - Ask which aspect to explore
+  - Launch agent-architect in focused mode on that aspect
+  - Append findings to original report or create supplement
+
+- **If implementation help (4):**
+  - Offer to create implementation plan
+  - Generate code scaffolding if applicable
+  - Create step-by-step implementation guide
+
+### Step 6: Iterative Refinement Loop
+If user requests changes (option 2 or 3):
+
+1. **Collect specific feedback:**
+   - What needs to change?
+   - What's missing?
+   - What needs deeper analysis?
+
+2. **Re-launch agent with context:**
+   ```
+   Previous analysis: {previous_report_path}
+
+   User feedback: [specific requests]
+
+   Please refine your analysis addressing the feedback.
+   Save updated report to: {original_path with -v2/-v3 suffix}
+   ```
+
+3. **Compare versions:**
+   - Show what changed
+   - Highlight new insights
+   - Return to Step 5 for validation
+
+4. **Limit iterations:** Maximum 3 rounds. After that, suggest live discussion or breaking into sub-tasks.
+
+### Step 7: Archive and Cleanup
+Once approved:
+
+1. **Create final report** (if multiple versions exist):
+   - Consolidate best insights
+   - Mark as "APPROVED" in filename
+   - Example: `workspace/agent-architect-reports/{timestamp}-{description}-APPROVED.md`
+
+2. **Offer next steps:**
+   - Implementation guidance
+   - Documentation generation
+   - Code scaffolding
+   - Follow-up analysis
 
 ---
 
 ## Example Usage Flow
 
 **User:** `/agent-architect`
+
 **Skill expands:** [Questionnaire appears]
+
 **User:** "I need to validate generated content against 7 different constraints..."
-**Claude:** [Fetches docs] → [Launches agent] → [Returns architectural recommendations]
+
+**Claude:**
+1. Summarizes requirements
+2. Fetches Anthropic documentation
+3. Launches agent-architect
+4. Reads generated report
+5. Presents summary with top 3 recommendations
+6. Shows report path: `workspace/agent-architect-reports/2025-11-10-143022-parallel-validation.md`
+7. **Asks:** "Would you like to: 1) Approve, 2) Refine, 3) Explore, 4) Implement?"
+
+**User:** "2 - I need more details on error handling"
+
+**Claude:**
+1. Collects specific feedback
+2. Re-launches agent with refinement request
+3. Reads updated report (`-v2` version)
+4. Shows what changed
+5. **Asks again:** "Would you like to: 1) Approve, 2) Refine, 3) Explore, 4) Implement?"
+
+**User:** "1 - Approve"
+
+**Claude:**
+1. Creates final approved report
+2. Offers implementation help
+3. Provides next steps
