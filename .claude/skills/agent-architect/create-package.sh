@@ -25,7 +25,7 @@ echo ""
 
 # Check if files exist
 REQUIRED_FILES=(
-    "agent-architect.md"
+    "SKILL.md"
     "agent-architect-agent.md"
     "README.md"
     "LICENSE"
@@ -44,32 +44,31 @@ echo ""
 # Create package directory
 echo "Creating package directory..."
 rm -rf "$PACKAGE_NAME"
-mkdir -p "$PACKAGE_NAME/agent"
+mkdir -p "$PACKAGE_NAME"
 echo -e "${GREEN}✓${NC} Directory created: $PACKAGE_NAME/"
 echo ""
 
 # Copy files
 echo "Copying files..."
 
-# Core skill
-cp agent-architect.md "$PACKAGE_NAME/"
-echo "  → agent-architect.md"
+# Core skill files
+cp SKILL.md "$PACKAGE_NAME/"
+echo "  → SKILL.md"
 
-# Agent
-cp agent-architect-agent.md "$PACKAGE_NAME/agent/"
-# Rename to standard agent name
-mv "$PACKAGE_NAME/agent/agent-architect-agent.md" "$PACKAGE_NAME/agent/agent-architect.md"
-echo "  → agent/agent-architect.md"
+# Agent (keep original name in source, install script will handle placement)
+cp agent-architect-agent.md "$PACKAGE_NAME/"
+echo "  → agent-architect-agent.md"
 
 # Documentation
 DOCS=(
     "README.md"
-    "agent-architect-README.md"
+    "USER-GUIDE.md"
     "EXAMPLE-USAGE.md"
     "DISTRIBUTION-GUIDE.md"
     "LICENSE"
     "CHANGELOG.md"
     "PACKAGE.md"
+    "CONVERSION-SUMMARY.md"
 )
 
 for doc in "${DOCS[@]}"; do
@@ -81,14 +80,11 @@ for doc in "${DOCS[@]}"; do
     fi
 done
 
-# Installation script (with modified paths)
+# Installation script
 if [ -f "install.sh" ]; then
     cp install.sh "$PACKAGE_NAME/"
-    # Update AGENT_FILE path in install script
-    sed -i.bak 's|AGENT_FILE="../agents/agent-architect.md"|AGENT_FILE="agent/agent-architect.md"|g' "$PACKAGE_NAME/install.sh"
-    rm "$PACKAGE_NAME/install.sh.bak" 2>/dev/null || true
     chmod +x "$PACKAGE_NAME/install.sh"
-    echo "  → install.sh (paths updated)"
+    echo "  → install.sh"
 fi
 
 echo ""
@@ -138,6 +134,15 @@ if [ -f "${PACKAGE_NAME}.zip" ]; then
 fi
 echo "  • ${PACKAGE_NAME}/ (directory)"
 echo ""
+echo "Package structure:"
+echo "  ${PACKAGE_NAME}/"
+echo "  ├── SKILL.md                    # Skill prompt"
+echo "  ├── agent-architect-agent.md    # Agent logic"
+echo "  ├── README.md                   # Main docs"
+echo "  ├── USER-GUIDE.md               # Detailed guide"
+echo "  ├── install.sh                  # Installer"
+echo "  └── ..."
+echo ""
 echo "Next steps:"
 echo "  1. Test installation:"
 echo "     cd ${PACKAGE_NAME} && ./install.sh"
@@ -145,14 +150,9 @@ echo ""
 echo "  2. Distribute via:"
 echo "     • GitHub Release: gh release create ${VERSION} ${PACKAGE_NAME}.tar.gz"
 echo "     • Direct share: Upload .tar.gz or .zip"
-echo "     • Gist: gh gist create agent-architect.md agent/agent-architect.md"
 echo ""
 echo "  3. Verify package:"
 echo "     tar tzf ${PACKAGE_NAME}.tar.gz | head -20"
-echo ""
-echo "Documentation:"
-echo "  • DISTRIBUTION-GUIDE.md - Distribution methods"
-echo "  • PACKAGE.md - Complete packaging guide"
 echo ""
 
 # Offer to create GitHub release
