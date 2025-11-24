@@ -12,6 +12,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Video tutorial
 - Integration with Claude Code skill registry (when available)
 
+## [1.1.0] - 2025-11-10
+
+### Added
+- **Human-in-the-Loop Validation:** Interactive approval workflow
+  - Agent writes report to file (workspace/agent-architect-reports/)
+  - Claude presents summary and requests feedback
+  - 4 options: Approve, Refine, Explore, Implement
+  - Iterative refinement with version tracking (-v2, -v3)
+  - Maximum 3 iteration rounds with graceful escalation
+
+- **Structured Report Format:**
+  - 7-section comprehensive analysis
+  - Executive summary for quick scanning
+  - ASCII architecture diagrams
+  - Research justification with citations
+  - Step-by-step implementation guidance
+  - Risk analysis with mitigations
+  - Validation checklist
+
+- **File-Based Artifacts:**
+  - All analyses saved to files
+  - Prevents context overflow
+  - Enables version comparison
+  - Supports approved/final marking
+
+- **Enhanced Agent Instructions:**
+  - Output format specification
+  - Report structure template
+  - File naming conventions
+  - Refinement handling procedures
+
+### Changed
+- Skill workflow extended from 4 to 7 steps
+- Agent now returns JSON metadata instead of full analysis
+- Added explicit iteration limits (3 rounds)
+- Updated example usage flow with HITL
+
+### Improved
+- Better separation of concerns (agent writes, Claude orchestrates)
+- More explicit user control and feedback points
+- Clearer escalation path for complex issues
+- Version tracking for multi-round refinements
+
 ## [1.0.0] - 2025-11-10
 
 ### Added
@@ -62,6 +105,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 | Version | Date | Key Features |
 |---------|------|--------------|
+| 1.1.0 | 2025-11-10 | Human-in-the-Loop validation, file-based reports, iterative refinement |
 | 1.0.0 | 2025-11-10 | Initial release with questionnaire, doc fetching, agent integration |
 
 ---
