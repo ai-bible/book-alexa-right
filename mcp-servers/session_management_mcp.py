@@ -15,7 +15,8 @@ State files:
 - workspace/session.lock - Active session pointer
 - workspace/sessions/{name}/session.json - Session metadata + CoW tracking
 """
-
+import json
+import os
 from pathlib import Path
 from datetime import datetime, timezone
 import shutil
