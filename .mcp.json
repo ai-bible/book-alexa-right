@@ -1,16 +1,25 @@
 {
   "mcpServers": {
-    "ai-book-state-tracker": {
-      "type": "stdio",
-      "command": "python",
+    "workflow_orchestration": {
+      "command": "uv",
       "args": [
-        "E:\\sources\\book-alexa-right\\mcp-servers\\generation_state_mcp.py"
+        "run",
+        "python",
+        "E:\\sources\\booking\\book-alexa-right\\mcp-servers\\workflow_orchestration_mcp.py"
       ],
-      "env": {
-        "PYTHONUNBUFFERED": "1",
-        "WORKSPACE_PATH": "workspace/",
-        "STATE_FILE_PATTERN": "generation-state-*.json"
-      }
+      "disabled": false
+    },
+    "hat-thinks": {
+      "type": "stdio",
+      "command": "uv",
+      "args": [
+        "run",
+        "--directory",
+        "E:/sources/mcp-server-mas-sequential-thinking",
+        "mcp-server-mas-sequential-thinking"
+      ],
+      "env": {},
+      "disabled": true
     }
   }
 }

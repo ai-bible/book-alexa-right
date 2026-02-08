@@ -2,706 +2,136 @@
 
 Интерактивная система планирования сюжета на четырёх уровнях иерархии.
 
-## Обзор
+---
 
-Planning Workflow предназначен для создания детальных планов на всех уровнях повествования: от стратегических планов акта до конкретных blueprints сцен.
+## Overview
 
-### Команды
-- `/plan-story` - основная команда интерактивного планирования
-- `/storyline` - управление сюжетными линиями персонажей
-- `/check-consistency` - проверка согласованности после изменений планов
+Planning Workflow создаёт детальные планы на всех уровнях: от стратегических планов акта до blueprints сцен.
 
-### Уровни планирования
+**Orchestrator**: `planning-coordinator` agent
+**Command**: `/plan-story`
+
+---
+
+## Planning Levels
 
 ```
-Level 1: Strategic (Act)
-    ↓
-Level 2: Storylines (Character arcs)
-    ↓
-Level 3: Chapter (Detailed chapter plan)
-    ↓
-Level 4: Scene (Blueprint for generation)
+Level 1: Strategic (Act)     → acts/act-{N}/strategic-plan.md
+Level 2: Storylines          → context/characters/{name}/storyline.md
+Level 3: Chapter             → acts/.../chapter-{NN}/plan.md
+Level 4: Scene (Blueprint)   → acts/.../scenes/scene-{NNNN}-blueprint.md
 ```
 
 ---
 
-## Команда `/plan-story`
-
-### Запуск
-
-```bash
-/plan-story
-```
-
-Координатор `planning-coordinator` начинает интерактивный диалог.
-
-### Диалоговый процесс
-
-#### Шаг 1: Определение уровня
-```
-planning-coordinator: "Что ты хочешь спланировать?"
-
-Опции:
-1. Strategic planning (весь акт)
-2. Storyline planning (сюжетная линия персонажа)
-3. Chapter planning (глава)
-4. Scene planning (сцена)
-5. Event planning (отдельное событие)
-```
-
-#### Шаг 2: Контекст
-```
-planning-coordinator: "Укажи контекст:"
-- Для акта: "Какой акт? (1, 2, 3...)"
-- Для главы: "Акт и номер главы?"
-- Для сцены: "Акт, глава, номер сцены?"
-```
-
-#### Шаг 3: Исследование (Фаза 1)
-
-Агенты `dialogue-analyst` и `context-analyzer` работают параллельно:
-
-**dialogue-analyst** задаёт уточняющие вопросы:
-```markdown
-## УТОЧНЯЮЩИЕ ВОПРОСЫ
-
-1. Отправная точка: откуда начинаем?
-2. Целевое состояние: к чему хотим прийти?
-3. Ключевые события: есть ли обязательные точки на пути?
-4. Затрагиваемые персонажи: кто участвует?
-5. Изменения мира: будут ли новые элементы/технологии?
-6. Эмоциональная направленность: какой тон/атмосфера?
-```
-
-**context-analyzer** анализирует текущее состояние:
-```markdown
-## АНАЛИЗ КОНТЕКСТА
-
-### Текущее состояние мира
-[Читает из world-bible, canon-levels]
-
-### Состояния персонажей
-[Читает из context/characters/]
-
-### Открытые сюжетные линии
-[Читает из plot-graph]
-
-### Ограничения канона
-[Читает canon-levels, выделяет ограничения]
-```
-
-Выход: `/workspace/artifacts/phase-1/exploration-results.md`
-
-#### Шаг 4: Генерация вариантов (Фаза 2)
-
-`planning-coordinator` определяет необходимые агенты на основе ответов.
-
-**scenario-generator** создаёт варианты:
-```markdown
-## ВАРИАНТЫ РАЗВИТИЯ
-
-### Вариант A: [Название]
-**Описание**: [Краткое описание пути]
-**Ключевые точки**: [Список]
-**Риски**: [Возможные проблемы]
-**Возможности**: [Что это открывает]
-
-### Вариант B: [Название]
-...
-
-### Вариант C: [Название]
-...
-```
-
-**consequence-predictor** для каждого варианта:
-```markdown
-## ПРОГНОЗ ПОСЛЕДСТВИЙ
-
-### Для варианта A
-**Влияние на персонажей**: [...]
-**Влияние на сюжетные линии**: [...]
-**Изменения мира**: [...]
-**Долгосрочные последствия**: [...]
-```
-
-**Если планируются изменения мира**, вызывается `world-impact-analyzer`:
-```markdown
-## АНАЛИЗ ВЛИЯНИЯ НА МИР
-
-### Новые элементы
-- [Элемент 1]: [Оценка совместимости с каноном]
-
-### Изменения существующих элементов
-- [Элемент X]: [Как изменится]
-
-### Потенциальные противоречия
-[Список]
-```
-
-Выход: `/workspace/artifacts/phase-2/scenarios.md`
-
-#### Шаг 5: Выбор направления
-
-```
-planning-coordinator представляет варианты пользователю
-
-Пользователь: выбирает вариант или предлагает модификацию
-```
-
-#### Шаг 6: Планирование пути (Фаза 3)
-
-**arc-planner** создаёт детальный план:
-
-Для **Event planning**:
-```markdown
-## СОБЫТИЕ: [Название]
-
-### Описание
-[Что происходит]
-
-### Участники
-- [Персонаж 1]: [роль в событии]
-- [Персонаж 2]: [роль в событии]
-
-### Разбиение на сцены
-#### Сцена 1: [Название]
-- Тип: Действие / Реакция
-- Ключевая задача: [...]
-- Продолжительность: [примерно]
-
-#### Сцена 2: [Название]
-...
-
-### Сюжетные линии
-- [Линия 1]: [как развивается]
-- [Линия 2]: [как затрагивается]
-```
-
-Для **Chapter planning**:
-```markdown
-## ГЛАВА [N]: [Название]
-
-### События главы
-1. Событие: [название]
-   - Сцены: [список]
-2. Событие: [название]
-   - Сцены: [список]
-
-### Дуга главы
-- Начало: [состояние]
-- Развитие: [ключевые точки]
-- Конец: [состояние]
-
-### Связь с другими главами
-- Предыдущая: [что берём]
-- Следующая: [что передаём]
-```
-
-**dependency-mapper** определяет зависимости:
-```markdown
-## КАРТА ЗАВИСИМОСТЕЙ
-
-### Событие 1 → Событие 2
-Зависимость: [Событие 2 требует результата События 1]
-
-### Сцена 1.1 ↔ Сюжетная линия A
-Связь: [Как влияют друг на друга]
-```
-
-Выход: `/workspace/artifacts/phase-3/path-plan.md`
-
-#### Шаг 7: Детализация (Фаза 4)
-
-**emotional-arc-designer** для каждого персонажа:
-```markdown
-## ЭМОЦИОНАЛЬНАЯ ДУГА: [Персонаж]
-
-### В событии/главе
-Начало: [эмоциональное состояние]
-↓
-Ключевые точки изменения:
-1. [Момент]: [изменение]
-2. [Момент]: [изменение]
-↓
-Конец: [итоговое состояние]
-
-### Мотивация
-[Что движет персонажем]
-
-### Внутренний конфликт
-[Если есть]
-```
-
-**beat-planner** разрабатывает биты для каждой сцены:
-```markdown
-## СЦЕНА: [Название]
-
-### Структура
-Тип: Действие (Цель-Конфликт-Катастрофа) / Реакция (Реакция-Дилемма-Решение)
-
-### Ключевые биты
-1. **Opening beat**: [Как начинается]
-2. **Escalation beat**: [Как нарастает напряжение]
-3. **Peak beat**: [Кульминационный момент]
-4. **Resolution beat**: [Как завершается]
-
-### Диалоговые точки
-- [Точка 1]: [О чём, какая информация]
-- [Точка 2]: [О чём, какая информация]
-
-### Подтексты
-- [Подтекст 1]: [Что на самом деле имеется в виду]
-```
-
-**dialogue-weaver** создаёт детальные планы диалогов:
-```markdown
-## ПЛАНИРОВАНИЕ ДИАЛОГОВ
-
-Для каждого ключевого диалога создаётся отдельный файл:
-- /workspace/artifacts/dialogue-plans/[character]-[dialogue-name].md
-
-Содержит:
-- Речевые паттерны персонажей
-- Структуру диалогового обмена
-- Подтексты и скрытые смыслы
-- Информационный обмен
-
-**ВАЖНО**: Планы пишутся в файлы, НЕ возвращаются в полном виде.
-```
-
-**Если затрагиваются знания персонажей**, вызывается `character-knowledge-updater`:
-```markdown
-## ОБНОВЛЕНИЕ ЗНАНИЙ ПЕРСОНАЖЕЙ
-
-### [Персонаж 1]
-**До события**: Знал [X, Y]
-**После события**: Узнаёт [Z], теперь знает [X, Y, Z]
-**Файл для обновления**: context/characters/[name]/knowledge-timeline.md
-
-### [Персонаж 2]
-...
-```
-
-Выход: `/workspace/artifacts/phase-4/detailed-plans.md`
-
-#### Шаг 8: Интеграция (Фаза 5)
-
-**storyline-integrator** определяет влияние на линии:
-```markdown
-## ИНТЕГРАЦИЯ СЮЖЕТНЫХ ЛИНИЙ
-
-### Основная линия: [Персонаж]
-**Статус до**: [Описание состояния линии]
-**Влияние**: [Как события меняют линию]
-**Статус после**: [Новое состояние]
-**Прогресс**: [Процент завершённости дуги]
-
-### Параллельная линия: [Другой персонаж]
-**Влияние**: [Прямое/косвенное влияние]
-**Изменения**: [Что меняется]
-
-### Скрытые линии
-**Линия [X]**: [Влияние событий, о которых ГГ не знает]
-```
-
-**impact-analyzer** анализирует общие последствия:
-```markdown
-## АНАЛИЗ ПОСЛЕДСТВИЙ
-
-### Для мира
-- Canon changes: [Список]
-- World-bible updates: [Что нужно обновить]
-
-### Для персонажей
-- Character states: [Кто как меняется]
-- Relationships: [Изменения в отношениях]
-
-### Для дальнейшего сюжета
-- New possibilities: [Что теперь можно]
-- Constraints: [Новые ограничения]
-- Hooks for future: [Что нужно разрешить позже]
-```
-
-Выход: `/workspace/artifacts/phase-5/integration-analysis.md`
-
-#### Шаг 9: Формирование финального плана
-
-`planning-coordinator` собирает все артефакты и создаёт финальный план:
-
-**Для Scene planning** → Blueprint:
-```markdown
-## SCENE BLUEPRINT: [Название]
-
-[Полная структура как в Generation Workflow, этап 5]
-
-### Техническое задание для Writer
-- Объём: ~3000-5000 символов
-- Стиль: [Указания]
-- Акценты: [На что обратить внимание]
-- Ограничения: [Что нельзя]
-```
-
-Сохраняется: `/acts/act-[N]/chapters/chapter-[M]/scenes/scene-[K]-blueprint.md`
-
-**Для Chapter planning** → Chapter Plan:
-```markdown
-## CHAPTER PLAN: Chapter [N]
-
-### События и сцены
-[Из фазы 3]
-
-### Эмоциональные дуги
-[Из фазы 4]
-
-### Интеграция сюжетных линий
-[Из фазы 5]
-
-### Ожидаемый объём
-[Количество сцен, примерный объём]
-```
-
-Сохраняется: `/acts/act-[N]/chapters/chapter-[M]/plan.md`
-
-**Для Act planning** → Strategic Plan:
-```markdown
-## STRATEGIC PLAN: Act [N]
-
-### Обзор акта
-[Общая цель акта в структуре книги]
-
-### Ключевые события
-[Список major events]
-
-### Сюжетные линии
-[Какие линии развиваются в этом акте]
-
-### Главы
-1. Chapter 1: [Название и краткое описание]
-2. Chapter 2: [Название и краткое описание]
-...
-
-### Milestone точки
-- 25%: [Ключевое событие]
-- 50%: [Ключевое событие]
-- 75%: [Ключевое событие]
-- 100%: [Завершение акта]
-```
-
-Сохраняется: `/acts/act-[N]/strategic-plan.md`
-
-#### Шаг 10: Презентация пользователю
-
-```
-planning-coordinator: "План готов. Файл сохранён: [путь]
-
-Основные моменты:
-- События: [N]
-- Сцены: [M]
-- Затронутые линии: [список]
-- Новые элементы мира: [если есть]
-
-Действия:
-1. ✅ Утвердить план
-2. 🔄 Внести изменения
-3. ❌ Отменить и начать заново"
-```
-
-Пользователь принимает решение.
+## 5-Phase Flow
+
+### Phase 1: Exploration
+- Ask clarifying questions about writer's vision
+- **Agent**: `context-analyzer` reads current world/character states
+- Identify gaps and opportunities
+
+### Phase 2: Scenarios (HUMAN APPROVAL)
+- **Agent**: `scenario-generator` creates 3-5 development options
+- **Agent**: `consequence-predictor` predicts outcomes for each
+- Present options with pros/cons
+- **WAIT for user selection**
+
+### Phase 3: Path Planning
+- **Agent**: `arc-planner` breaks chosen scenario into events/scenes
+- Includes dependency mapping between events
+- Present structured plan for feedback
+
+### Phase 4: Detailing
+- **Agent**: `beat-planner` creates scene beats
+- Includes emotional arcs and dialogue planning
+- Present detailed beats for review
+
+### Phase 5: Integration
+- **Agent**: `storyline-integrator` integrates with existing storylines
+- Includes impact analysis (plot, character, world, theme)
+- Present integration report
+
+### Final: Synthesize
+- Collect all phase artifacts
+- Create output file at appropriate level
+- Present summary, ask for confirmation
 
 ---
 
-## Команда `/storyline`
+## Agents
 
-Управление сюжетными линиями персонажей.
-
-### Использование
-
-```bash
-/storyline <action> <character-name>
-```
-
-### Действия
-
-#### 1. Создание линии
-```bash
-/storyline create chronos
-```
-
-Агент `storyline-developer` запускает диалог:
-```
-storyline-developer: "Создание линии для персонажа Chronos.
-
-1. Тип линии:
-   - Main (основная линия ГГ)
-   - Parallel (параллельная видимая линия)
-   - Hidden (скрытая линия)
-
-2. Временные рамки:
-   - Акт: [какой]
-   - От главы: [N]
-   - До главы: [M]
-
-3. Ключевая тема линии:
-   [Что это за дуга? Например: "Сомнения в Совете"]
-
-4. Начальное и конечное состояние:
-   - Начало: [состояние персонажа]
-   - Конец: [целевое состояние]
-```
-
-После ответов создаёт:
-```markdown
-## STORYLINE: [Character] - [Theme]
-
-### Метаданные
-- Type: Main / Parallel / Hidden
-- Act: [N]
-- Chapters: [from] - [to]
-- Status: Planning / Active / Complete
-
-### Дуга
-**Starting point**: [Описание]
-**Key turning points**:
-1. [Точка 1]: [Событие и изменение]
-2. [Точка 2]: [Событие и изменение]
-3. [Точка 3]: [Событие и изменение]
-**Ending point**: [Описание]
-
-### Связанные элементы
-- Projects: [Связанные проекты]
-- Other characters: [С кем взаимодействует]
-- World elements: [Элементы мира]
-
-### Ключевые сцены
-- Chapter [N], Scene [M]: [Важность для линии]
-- Chapter [X], Scene [Y]: [Важность для линии]
-
-### Эмоциональная траектория
-[График развития эмоционального состояния]
-
-### Ограничения канона
-[Что нельзя нарушать]
-```
-
-Сохраняется: `/acts/act-[N]/storylines/[character]-[theme].md`
-
-#### 2. Запрос информации
-```bash
-/storyline query chronos "Какова его мотивация в главе 5?"
-```
-
-`storyline-developer` читает линию и отвечает:
-```markdown
-## ЗАПРОС ПО ЛИНИИ: Chronos
-
-### Глава 5
-**Мотивация**: [Описание на основе storyline]
-**Эмоциональное состояние**: [Состояние]
-**Знания на данный момент**: [Что знает]
-**Текущая фаза дуги**: [Где находится]
-```
-
-#### 3. Обновление линии
-```bash
-/storyline update chronos
-```
-
-Диалоговый режим для внесения изменений.
-
-#### 4. Проверка влияния
-```bash
-/storyline impact "Хронос узнаёт правду о Зеркале"
-```
-
-`storyline-developer` анализирует:
-```markdown
-## АНАЛИЗ ВЛИЯНИЯ СОБЫТИЯ
-
-### На линию Chronos (Main)
-**Влияние**: Критическое
-**Изменения**: [Что меняется в его линии]
-**Последствия**: [Для дальнейшего развития]
-
-### На связанные линии
-- Mara (Parallel): [Влияние]
-- Council (Hidden): [Влияние]
-
-### Требуется обновление
-- storylines/chronos-main.md
-- storylines/council-hidden.md
-```
+| Agent | Phase | Purpose |
+|-------|-------|---------|
+| planning-coordinator | All | Orchestration, user dialogue |
+| context-analyzer | 1 | Current state analysis |
+| scenario-generator | 2 | Generate 3-5 options |
+| consequence-predictor | 2 | Predict outcomes |
+| arc-planner | 3 | Events, scenes, dependencies |
+| beat-planner | 4 | Beats, emotions, dialogue |
+| storyline-integrator | 5 | Storylines, impact |
 
 ---
 
-## Команда `/check-consistency`
+## Human Approval Points
 
-Проверка согласованности после изменений в планах.
+1. **Phase 2**: User selects scenario from options
+2. **Final**: User confirms completed plan
 
-### Использование
-
-```bash
-/check-consistency
-```
-
-### Процесс
-
-Агент `consistency-checker` выполняет анализ:
-
-#### Шаг 1: Определение изменений
-```markdown
-## АНАЛИЗ ИЗМЕНЕНИЙ
-
-### Изменённые планы
-- /acts/act-1/strategic-plan-v2.md (изменён)
-- /acts/act-1/storylines/chronos-main.md (обновлён)
-
-### Масштаб изменений
-- Затронуто глав: [N]
-- Затронуто сцен: [M]
-- Затронуто персонажей: [K]
-```
-
-#### Шаг 2: Анализ влияния на написанное
-```markdown
-## ВЛИЯНИЕ НА КОНТЕНТ
-
-### Главы требующие проверки
-1. **Chapter 2** (/acts/act-1/chapters/chapter-02/content/)
-   - Причина: Изменена мотивация Chronos
-   - Подозрительные места: Сцены 2.1, 2.3
-   - Критичность: Высокая
-
-2. **Chapter 4** (/acts/act-1/chapters/chapter-04/content/)
-   - Причина: Добавлена новая сюжетная линия
-   - Подозрительные места: Сцена 4.2 (нужна доработка)
-   - Критичность: Средняя
-
-### Сцены требующие переписывания
-- Chapter 2, Scene 1: [Почему]
-- Chapter 2, Scene 3: [Почему]
-
-### Сцены требующие проверки
-- Chapter 3, Scene 2: [Что проверить]
-- Chapter 4, Scene 2: [Что проверить]
-```
-
-#### Шаг 3: Проверка канона
-```markdown
-## ПРОВЕРКА КАНОНА
-
-### Изменения в элементах мира
-- [Элемент X]: Был изменён в новом плане
-  - Проверить использование в: Chapter 1, Chapter 3
-  
-### Потенциальные противоречия
-- [Противоречие 1]: [Описание]
-  - Требует разрешения в: [Места]
-```
-
-#### Шаг 4: Создание TODO-листа
-```markdown
-## TODO: ВЫЧИТКА ПОСЛЕ ИЗМЕНЕНИЙ ПЛАНА
-
-### Критичные (требуют переписывания)
-- [ ] Chapter 2, Scene 1 - изменена мотивация Chronos
-- [ ] Chapter 2, Scene 3 - конфликт с новой сюжетной линией
-
-### Высокий приоритет (требуют проверки)
-- [ ] Chapter 3, Scene 2 - проверить диалог на соответствие
-- [ ] Chapter 4, Scene 2 - добавить упоминание новой линии
-
-### Средний приоритет (возможные несоответствия)
-- [ ] Chapter 1, Scene 4 - проверить использование [элемента]
-- [ ] Chapter 5, Scene 1 - проверить временную логику
-
-### Низкий приоритет (косметические правки)
-- [ ] Chapter 3, Scene 4 - обновить намёки на будущее
-
-### Обновления контекстов
-- [ ] Обновить context/characters/chronos/timeline.md
-- [ ] Обновить world-bible согласно изменениям
-- [ ] Обновить canon-levels если были изменения
-
-### Рекомендации
-[Общие советы по вычитке]
-```
-
-Сохраняется: `/workspace/consistency-checks/todo-[timestamp].md`
+Writer can redirect at any point during the interactive process.
 
 ---
 
-## Агенты Planning Workflow
-
-### Координатор
-- **planning-coordinator** - управляет всем процессом планирования
-
-### Фаза 1: Исследование
-- **dialogue-analyst** - задаёт уточняющие вопросы
-- **context-analyzer** - анализирует текущее состояние
-
-### Фаза 2: Варианты
-- **scenario-generator** - генерирует варианты развития
-- **consequence-predictor** - прогнозирует последствия
-- **world-impact-analyzer** - анализирует влияние на мир (условно)
-
-### Фаза 3: План пути
-- **arc-planner** - разбивает на события/сцены
-- **dependency-mapper** - определяет зависимости
-
-### Фаза 4: Детализация
-- **emotional-arc-designer** - проектирует эмоциональные дуги
-- **beat-planner** - разрабатывает биты сцен
-- **dialogue-weaver** - создаёт детальные планы диалогов (пишет в файлы)
-- **character-knowledge-updater** - обновляет знания персонажей (условно)
-
-### Фаза 5: Интеграция
-- **storyline-integrator** - интегрирует с сюжетными линиями
-- **impact-analyzer** - анализирует общие последствия
-
-### Специализированные
-- **storyline-developer** - управление сюжетными линиями
-- **consistency-checker** - проверка согласованности
-
----
-
-## Форматы файлов
-
-### Strategic Plan
-Путь: `/acts/act-[N]/strategic-plan.md`
-
-### Storyline
-Путь: `/acts/act-[N]/storylines/[character]-[theme].md`
-
-### Chapter Plan
-Путь: `/acts/act-[N]/chapters/chapter-[M]/plan.md`
+## Output Formats
 
 ### Scene Blueprint
-Путь: `/acts/act-[N]/chapters/chapter-[M]/scenes/scene-[K]-blueprint.md`
+```markdown
+# Scene {ID} Blueprint
 
-### Event Plan
-Встраивается в Chapter Plan или создаётся отдельно для сложных событий
+## Overview
+POV, location, time, participants
+
+## Scene Goal
+What this scene accomplishes
+
+## Beats
+1. Opening hook
+2. Development beats
+3. Turning point
+4. Closing hook
+
+## Constraints
+- Required elements
+- Forbidden elements
+- World mechanics to respect
+
+## Character States
+- Before/after for each character
+```
+
+### Chapter Plan
+```markdown
+# Chapter {NN} Plan
+
+## Overview
+Theme, timespan, POV characters
+
+## Scene Sequence
+1. Scene {NNNN}: purpose, key events
+2. Scene {NNNN}: purpose, key events
+
+## Character Arcs
+Per-character development in this chapter
+
+## Plot Threads
+Active threads and their progression
+```
 
 ---
 
-## Связь с Generation Workflow
-
-После завершения планирования:
+## File Locations
 
 ```
-Scene Blueprint готов
-    ↓
-Пользователь: "Сгенерируй сцену из blueprint [путь]"
-    ↓
-Generation Workflow начинает с этапа 5-6
-(пропускает планирование, т.к. blueprint уже есть)
-    ↓
-Готовая сцена сохраняется в /content/
+Artifacts: workspace/artifacts/planning-{timestamp}/phase-{N}/
+Output:    acts/.../plan.md or scenes/scene-{ID}-blueprint.md
 ```
-
----
-
-**Версия**: 1.0  
-**Связанные документы**: 
-- [Generation Workflow](generation.md)
-- [Integration Guide](integration.md)
-- [Agents Reference](agents-reference.md)

@@ -817,6 +817,14 @@ Scene: acts/act-1/chapters/chapter-01/content/scene-0101.md
 - State transitions & validation
 - Resume capability
 
+**FEAT-0005**: Context Integration After Generation ⭐ NEW
+- Step 8: Context Synthesis (extends to 8-step Generation Workflow)
+- Character knowledge-timeline tracking (`context/characters/{name}/knowledge-timeline.md`)
+- Tiered automation (CRITICAL/SIGNIFICANT/ROUTINE)
+- 2 new agents: context-extractor, context-integrator
+- Commands: `/integrate-context`, `/rollback-context`
+- Optional trigger after scene generation
+
 ### 🚧 In Development
 
 **Phase 5**: Advanced Features (Planned)
@@ -826,6 +834,6 @@ Scene: acts/act-1/chapters/chapter-01/content/scene-0101.md
 
 ---
 
-**Last Updated**: 2025-11-15
-**Version**: Phase 4 + FEAT-0003 (Hierarchical Planning)
+**Last Updated**: 2025-11-28
+**Version**: Phase 4 + FEAT-0003 + FEAT-0005 (Context Integration)
 **Maintainers**: AI-assisted writing system team

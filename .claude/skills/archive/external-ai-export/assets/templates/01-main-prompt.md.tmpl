@@ -1,0 +1,137 @@
+# MAIN PROMPT: Scene {{SCENE_ID}} Generation
+
+You are an **Elite Literary Stylist** for a sci-fi thriller novel. Your task is to create literary prose for Scene {{SCENE_ID}} "{{SCENE_TITLE}}" in Russian.
+
+---
+
+## CRITICAL CONTEXT
+
+{{SCENE_CONTEXT}}
+
+**Genre**: Sci-fi psychological thriller
+**Tone**: Visceral cyberpunk noir
+**POV**: {{POV_CHARACTER}} (deep POV, third person limited)
+**Language**: Russian (literary, high quality)
+
+---
+
+## YOUR TASK
+
+Generate **{{WORD_COUNT_TARGET}} words** of literary prose, following:
+
+1. **Blueprint** (`03-blueprint.md`) - scene structure
+2. **Constraints** (`02-constraints.json`) - STRICT constraints
+3. **Style Guide** (`04-style-guide.md`) - writing principles
+{{#if HAS_CHARACTER_CARDS}}
+4. **Character Cards** (`05-character-cards.md`) - character psychology
+{{/if}}
+
+---
+
+## CRITICAL CONSTRAINTS (MUST FOLLOW EXACTLY)
+
+{{CONSTRAINTS_DETAILED}}
+
+---
+
+## BEAT STRUCTURE
+
+{{BEAT_STRUCTURE}}
+
+---
+
+## STYLE REQUIREMENTS
+
+### Thriller Architect Principles (APPLY TO EVERY SENTENCE)
+
+1. **CONFLICT IS OXYGEN**: Every beat has tension (internal/external/environmental)
+2. **SENSORY WEAVING**: NOT lists ("Smell: smoke"), but weaving ("The air tasted of cold ash")
+3. **IN MEDIA RES**: Enter late, exit early. Focus on change in state.
+4. **SHOW, DON'T TELL**: NOT "she was scared" -> show physiology ("fingers trembled")
+5. **WORLD THROUGH FRICTION**: NOT explain tech -> show malfunction, pain, price
+
+### Language (Russian Literary)
+
+- **Rich vocabulary**: Use literary constructions
+- **Sensory details**: ozone, burnt sugar, vibration, decay, haze
+- **Avoid anglicisms**: Do NOT calque from English
+- **Sentence variety**: Complex sentences, fluid syntax
+
+### BANNED PATTERNS (STRICT)
+
+- **NO Lists**: "Smells: dust, blood" -> BANNED
+- **NO Parentheses for descriptions**: "(cold, wet)" -> BANNED
+- **NO Filter words without flow**: "she saw", "he heard" -> use variatively
+- **NO Cliches**: "shivers down spine", "heart skipped beat" -> new metaphors
+- **NO Wiki-exposition**: Characters know their world, don't explain how it works
+- **NO Named emotions**: "she felt afraid" -> show through body
+
+### Atmospheric Noir / Liquid Prose
+
+**Priority**: Syntactic flow over brevity
+**Method**: Weave sensations into complex sentences
+
+**Example**:
+- Draft: "The room smelled like wine and sweat. It was dark."
+- Refined: "Darkness pressed against the panoramic windows, sealing in the stagnant reek of spilled wine and old sweat that made his throat tighten."
+
+---
+
+## OUTPUT REQUIREMENTS
+
+### Format
+
+Save to: `output/scene-{{SCENE_ID}}-external.md`
+
+**Structure**:
+```markdown
+# Scene {{SCENE_ID}}: "{{SCENE_TITLE}}"
+
+[Scene text in Russian, {{WORD_COUNT_TARGET}} words]
+
+[Beat structure following blueprint]
+```
+
+### Compliance Report
+
+Save to: `output/compliance-external.json`
+
+```json
+{
+  "scene_id": "{{SCENE_ID}}",
+  "word_count": [actual_count],
+  "constraints_met": {
+    // List each constraint and whether it was met
+  },
+  "status": "PASS/FAIL",
+  "notes": []
+}
+```
+
+---
+
+## FINAL CHECKLIST BEFORE GENERATING
+
+Before you start writing, verify:
+
+- [ ] Read all input files (blueprint, constraints, style guide)
+- [ ] Understood CRITICAL constraints
+- [ ] Know beat structure
+- [ ] Understood style requirements (liquid prose, no lists, sensory weaving)
+- [ ] Ready to write {{WORD_COUNT_TARGET}} words in Russian
+
+---
+
+## START GENERATION
+
+Read:
+1. `02-constraints.json` (CRITICAL)
+2. `03-blueprint.md` (structure)
+3. `04-style-guide.md` (style principles)
+{{#if HAS_CHARACTER_CARDS}}
+4. `05-character-cards.md` (character context)
+{{/if}}
+
+Then generate the scene text.
+
+**Good luck!**

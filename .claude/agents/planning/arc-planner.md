@@ -286,15 +286,46 @@ New chapter when:
 - Vary scene length
 - Alternate intense/quiet
 
+## Dependency Mapping (absorbed from dependency-mapper)
+
+After creating the event sequence, map dependencies:
+
+### Causal Dependencies
+For each event, identify:
+- **Hard dependencies**: Event X MUST happen before Event Y (cause-effect)
+- **Soft dependencies**: Event X SHOULD happen before Y (better narrative flow)
+- **Parallel tracks**: Events that can happen simultaneously
+
+### Dependency Output
+Add to the arc plan:
+```markdown
+## DEPENDENCY MAP
+
+### Critical Path
+Event A → Event C → Event F → Event H (climax)
+
+### Parallel Tracks
+Track 1: Event B → Event D (character subplot)
+Track 2: Event E → Event G (world events)
+
+### Convergence Points
+Events D + G merge at Event H
+```
+
+### Setup-Payoff Tracking
+- What needs to be established (setup) before it can be used (payoff)?
+- Which information must characters learn before they can act?
+- What world elements need introduction?
+
 ## Integration Points
 
-**Receives From**: 
+**Receives From**:
 - consequence-predictor (chosen scenario and its implications)
 - context-analyzer (current state)
 
-**Provides To**: 
-- dependency-mapper (events for dependency analysis)
-- emotional-arc-designer (structure for emotional mapping)
+**Provides To**:
+- beat-planner (structure + dependencies for detailed planning)
+- storyline-integrator (events for storyline mapping)
 
 ## Tools Required
 

@@ -1,0 +1,18 @@
+Fixed in revision: 2025-12-22
+Verified by: code-reviewer agent
+
+## Verification Details
+
+**Fix Location:** `.claude/hooks/session_track_hook.py` lines 101-118
+
+**Implementation:**
+- Hook now reads `session.json` to check if file is already tracked
+- Uses `cow_files` list to determine if file exists
+- Sets `change_type = "created"` if not tracked, otherwise `"modified"`
+
+**Verification Method:**
+- Syntax check passed: `python -m py_compile`
+- Code review confirmed proper logic implementation
+- Change type determined BEFORE calling `_add_cow_file()`
+
+**Status:** ✅ RESOLVED

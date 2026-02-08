@@ -173,7 +173,7 @@ Claude Code поддерживает несколько типов hooks:
 ### Структура Hook
 
 ```python
-#!/usr/bin/env python3
+#!/usr/bin/env python
 """
 {Hook Type}: {Hook Name}
 
@@ -340,7 +340,7 @@ HOOK_DEBUG=1 claude code
 **Hook не запускается**:
 - Проверь `.claude/claude.json` регистрацию
 - Проверь права на выполнение: `chmod +x hook.py`
-- Проверь shebang: `#!/usr/bin/env python3`
+- Проверь shebang: `#!/usr/bin/env python`
 
 **Hook блокирует операции**:
 - Проверь exit code: должен быть 0 для non-blocking
@@ -395,6 +395,72 @@ if not is_safe_path(file_path, Path.cwd()):
 - [Claude Code Hooks Documentation](https://docs.claude.com/en/docs/claude-code/hooks)
 - [Python sys module](https://docs.python.org/3/library/sys.html)
 - [Python json module](https://docs.python.org/3/library/json.html)
+
+### integration_guard_hook.py (FEAT-0005)
+
+**Тип**: PreToolUse (blocking)
+**Статус**: IMPORTANT - предотвращает потерю контекста
+**Блокирует**: ДА (только commit_session)
+
+#### Назначение
+
+Блокирует коммит сессии если есть сцены с pending context integrations:
+- Сгенерирована (`generated=true`)
+- НЕ интегрирована (`integrated=false`)
+- НЕ пропущена (`skipped=false`)
+
+#### Когда запускается
+
+Перед вызовом `mcp__session_management__commit_session`
+
+#### Что показывает
+
+**Если есть pending integrations:**
+```
+❌ BLOCKED: Commit has pending context integrations
+
+The following scenes were generated but not integrated:
+  • Scene 0204
+  • Scene 0205
+
+💡 Options:
+   1. Integrate contexts: /integrate-context <scene_id>
+   2. Skip integration: Mark as skipped in integration-status.json
+   3. Force commit: /session commit --force
+```
+
+#### Связанные файлы
+
+- `workspace/integration-status.json` - tracking статуса интеграций
+- `context/characters/{name}/knowledge-timeline.md` - knowledge timelines
+
+---
+
+### session_summary_hook.py (Updated for FEAT-0005)
+
+**Обновление**: Теперь показывает pending context integrations при завершении сессии.
+
+```
+📂 ACTIVE SESSION
+============================================================
+
+Session: chapter-01-work
+Status: ACTIVE
+...
+
+⚠️  Pending context integrations: 2
+  • Scene 0204 (generated but not integrated)
+  • Scene 0205 (generated but not integrated)
+
+  Run: /integrate-context <scene_id>
+
+💡 Don't forget to:
+  - Integrate contexts first (or commit will be blocked)
+  - Commit changes: /session commit
+  - Or cancel: /session cancel
+```
+
+---
 
 ## 🔮 Future Hooks (Planned)
 

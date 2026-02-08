@@ -1,0 +1,19 @@
+Fixed in revision: 2025-12-22
+Verified by: code-reviewer agent
+
+## Verification Details
+
+**Fix Location:** `mcp-servers/session_utils.py` lines 24-37, 298
+
+**Implementation:**
+- Added `_normalize_session_path()` utility function
+- Converts all paths to POSIX format using `Path.as_posix()`
+- Called in `_add_cow_file()` at line 298 to normalize before storage
+- Hook uses `rel_path.as_posix()` at line 97 for cross-platform compatibility
+
+**Verification Method:**
+- Syntax check passed: `python -m py_compile`
+- Code review confirmed consistent use of POSIX separators
+- Path normalization applied before storage in session.json
+
+**Status:** ✅ RESOLVED

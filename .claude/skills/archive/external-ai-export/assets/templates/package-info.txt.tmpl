@@ -1,0 +1,96 @@
+===============================================================================
+  SCENE {{SCENE_ID}} GENERATION PACKAGE FOR EXTERNAL AI
+===============================================================================
+
+Scene ID: {{SCENE_ID}} "{{SCENE_TITLE}}"
+Target AI: Gemini / Claude API / GPT-4 / Other
+Created: {{TIMESTAMP}}
+Package Version: 1.0
+
+===============================================================================
+
+PACKAGE CONTENTS:
+
+1. 00-QUICK-START.md             - Quick start guide (start here!)
+2. 01-MAIN-PROMPT.md             - Main generation prompt
+3. 02-constraints.json           - Critical constraints (JSON)
+4. 03-blueprint.md               - Detailed scene structure
+5. 04-style-guide.md             - Writing principles
+{{#if HAS_CHARACTER_CARDS}}6. 05-character-cards.md         - Character context{{/if}}
+{{#if HAS_PREVIOUS_SCENES}}7. 06-previous-scenes.md         - Previous scenes context{{/if}}
+{{#if HAS_WORLD_BIBLE}}8. 07-world-bible.md             - World bible excerpts{{/if}}
+9. PACKAGE-INFO.txt              - This file
+10. output/                      - Directory for AI-generated files
+
+===============================================================================
+
+CRITICAL CONSTRAINTS SUMMARY:
+
+{{CONSTRAINTS_SUMMARY}}
+
+===============================================================================
+
+HOW TO USE:
+
+STEP 1: Read 00-QUICK-START.md (this tells you everything)
+
+STEP 2: Feed all files to AI with prompt:
+        "Read these files in order and generate Scene {{SCENE_ID}}..."
+
+STEP 3: AI saves results to:
+        - output/scene-{{SCENE_ID}}-external.md      (scene text)
+        - output/compliance-external.json            (compliance report)
+
+STEP 4: Verify compliance report shows status: "PASS"
+
+STEP 5: Return to Claude Code and type "ready"
+
+===============================================================================
+
+SUCCESS CRITERIA:
+
+Scene is SUCCESSFUL if ALL of these are TRUE:
+
+[_] All critical constraints met
+[_] Word count {{WORD_COUNT_TARGET}}
+[_] Russian language (literary quality)
+[_] Beat structure present
+[_] Liquid prose style (no lists, sensory weaving)
+[_] Compliance report: status "PASS"
+
+===============================================================================
+
+FILE PRIORITY (if conflicting info):
+
+1. 02-constraints.json (technical constraints)    <- HIGHEST
+2. 01-MAIN-PROMPT.md (main instructions)
+3. 04-style-guide.md (style)
+4. 03-blueprint.md (structure guide)              <- LOWEST
+
+If blueprint says X but constraints say Y:
+-> Use Y (constraints override blueprint)
+
+===============================================================================
+
+TIPS FOR AI:
+
+1. Read ALL files before generating (don't skip any)
+2. Prioritize 02-constraints.json for exact values
+3. Use 04-style-guide.md for every sentence
+4. Liquid prose = complex sentences, NOT short staccato
+5. Sensory weaving = weave into narrative, NOT "Smell: X"
+6. NO lists, NO parentheses, NO named emotions
+7. Russian literary vocabulary
+8. Be honest in compliance report (mark FAIL if constraint missed)
+
+===============================================================================
+
+READY TO START?
+
+-> Open 00-QUICK-START.md
+-> Follow 3-step process
+-> Generate amazing literary prose!
+
+Good luck!
+
+===============================================================================

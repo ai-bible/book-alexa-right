@@ -413,15 +413,49 @@ Scene 3: ████████░░ → ██████████
 - Plotting/planning
 - Most character interactions
 
+## Emotional Arc Design (absorbed from emotional-arc-designer)
+
+For each scene, design the emotional journey:
+
+### Character Emotional Tracking
+| Beat | Character A Emotion | Character B Emotion | Dynamic |
+|------|-------------------|-------------------|---------|
+| Opening | [state] | [state] | [relationship] |
+| Mid | [shift] | [shift] | [tension] |
+| Closing | [result] | [result] | [new dynamic] |
+
+### Emotional Arc Principles
+- Each scene has an emotional trajectory (not flat)
+- Character emotions must have causes (not arbitrary shifts)
+- Track how emotions carry over between scenes
+- Internal vs displayed emotion (subtext opportunities)
+
+## Dialogue Planning (absorbed from dialogue-weaver)
+
+For key dialogue exchanges in each scene:
+
+### Dialogue Design
+- **Purpose**: What does this exchange accomplish?
+- **Subtext**: What's unsaid but communicated?
+- **Power dynamic**: Who holds power, how does it shift?
+- **Information flow**: What does each character learn?
+- **Voice markers**: How does each character's speech differ?
+
+### Speech Pattern Notes
+For each character in the scene:
+- Vocabulary level and style
+- Sentence structure tendencies
+- Verbal tics or patterns
+- How stress/emotion affects their speech
+
 ## Integration Points
 
-**Receives From**: 
-- arc-planner (scene list)
-- emotional-arc-designer (emotional context)
+**Receives From**:
+- arc-planner (scene list + dependencies)
 
-**Provides To**: 
+**Provides To**:
 - storyline-integrator (detailed beat plans)
-- prose-architect (during generation)
+- prose-writer (during generation)
 
 ## Tools Required
 

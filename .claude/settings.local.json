@@ -1,33 +1,76 @@
 {
   "permissions": {
     "allow": [
-      "Bash(if exist \"chapters\\chapter-01-plan.md\" move \"chapters\\chapter-01-plan.md\" \"chapters\\chapter-01\\plan.md\")",
-      "Bash(if exist \"chapters\\chapter-02-plan.md\" move \"chapters\\chapter-02-plan.md\" \"chapters\\chapter-02\\plan.md\")",
-      "Bash(if exist \"chapters\\chapter-03-plan.md\" move \"chapters\\chapter-03-plan.md\" \"chapters\\chapter-03\\plan.md\")",
-      "Bash(if exist \"chapters\\chapter-04-plan.md\" move \"chapters\\chapter-04-plan.md\" \"chapters\\chapter-04\\plan.md\")",
-      "Bash(for chapter in chapter-01 chapter-02 chapter-03 chapter-04)",
-      "Bash(do mkdir -p \"$chapter/scenes\" \"$chapter/content\")",
-      "Bash(done)",
-      "Bash(mv:*)",
-      "Bash(do echo \"=== $chapter ===\")",
       "Bash(ls:*)",
       "Bash(mkdir:*)",
-      "Bash(dir:*)",
+      "Bash(mv:*)",
+      "Bash(cp:*)",
+      "Bash(move:*)",
       "Bash(copy:*)",
-      "Bash(awk:*)",
-      "Bash(if exist \"workspace\\logs\" dir workspacelogs /O-D /B)",
-      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(dir:*)",
+      "Bash(tree:*)",
+      "Bash(test:*)",
+      "Bash(findstr:*)",
+      "Bash(chcp:*)",
+      "Bash(set:*)",
+      "Bash(python:*)",
+      "Bash(python -c:*)",
       "Bash(python -m py_compile:*)",
+      "Bash(PYTHONUTF8=1 python:*)",
+      "Bash(powershell:*)",
+      "Bash(git diff:*)",
+      "Bash(tasklist:*)",
+      "Bash(awk:*)",
+      "Bash(cat:*)",
       "WebSearch",
-      "Skill(mcp-builder)",
+      "WebFetch(domain:raw.githubusercontent.com)",
       "WebFetch(domain:github.com)",
-      "WebFetch(domain:www.eesel.ai)"
+      "mcp__workflow_orchestration__validate_prerequisites",
+      "mcp__workflow_orchestration__list_workflows",
+      "mcp__workflow_orchestration__update_workflow_state",
+      "Skill(ai-prose-detector)",
+      "Bash(git push:*)",
+      "Bash(git rm:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git reset:*)"
     ],
     "deny": [],
     "ask": []
   },
-  "disabledMcpjsonServers": [
-    "ai-book-state-tracker"
+  "enableAllProjectMcpServers": true,
+  "enabledMcpjsonServers": [
+    "workflow_orchestration"
   ],
-  "outputStyle": "Basic Learning"
+  "disabledMcpjsonServers": [
+    "ai-book-state-tracker",
+    "session_management",
+    "hat-thinks"
+  ],
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python .claude/hooks/agent_call_logger_hook.py"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python .claude/hooks/workflow_checkpoint_hook.py"
+          }
+        ]
+      }
+    ]
+  },
+  "enabledPlugins": {},
+  "outputStyle": "default"
 }

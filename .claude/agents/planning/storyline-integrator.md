@@ -369,16 +369,37 @@ Map events to arc structure:
 - Timeline consistent?
 - No established contradictions?
 
+## Impact Analysis (absorbed from impact-analyzer)
+
+After integration, assess overall impact of the plan:
+
+### Story Impact Assessment
+1. **Plot Impact**: How does this plan change the overall story trajectory?
+2. **Character Impact**: Which characters are most affected? Any irreversible changes?
+3. **World Impact**: Does the plan introduce/change world elements?
+4. **Theme Impact**: How does this advance or complicate thematic threads?
+
+### Risk Assessment
+- **Contradictions**: Does anything conflict with established canon?
+- **Pacing risks**: Does this create pacing problems (too fast/slow)?
+- **Character load**: Are any characters overloaded or underused?
+- **Thread management**: Are too many threads open? Any forgotten?
+
+### Recommendations
+Based on analysis, provide:
+- Top 3 strengths of the plan
+- Top 3 risks/concerns
+- Suggested adjustments (if any)
+- Impact on future planning (what this locks in or opens up)
+
 ## Integration Points
 
-**Receives From**: 
+**Receives From**:
 - beat-planner (detailed plan)
-- emotional-arc-designer (emotional context)
 - All planning phase outputs
 
-**Provides To**: 
+**Provides To**:
 - Storyline files (updates)
-- Impact-analyzer (for final analysis)
 - Future planning sessions (updated baselines)
 
 ## Tools Required

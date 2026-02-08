@@ -1,0 +1,150 @@
+# Quick Start Guide for External AI Generation
+
+## What You Have Here
+
+Complete package for generating Scene {{SCENE_ID}} "{{SCENE_TITLE}}" in **Gemini**, **GPT-4**, **Claude API**, or any other AI.
+
+---
+
+## Quick Start (3 Steps)
+
+### STEP 1: Read Files in Order
+
+1. **`01-MAIN-PROMPT.md`** - Start here (main instructions)
+2. **`02-constraints.json`** - CRITICAL constraints (must follow exactly)
+3. **`03-blueprint.md`** - Detailed scene structure
+4. **`04-style-guide.md`** - Writing principles
+{{#if HAS_CHARACTER_CARDS}}
+5. **`05-character-cards.md`** - Character psychology and context
+{{/if}}
+{{#if HAS_PREVIOUS_SCENES}}
+6. **`06-previous-scenes.md`** - Context from earlier scenes
+{{/if}}
+{{#if HAS_WORLD_BIBLE}}
+7. **`07-world-bible.md`** - World-building context
+{{/if}}
+
+### STEP 2: Generate
+
+Feed all files to your AI with this prompt:
+
+```
+I need you to generate Scene {{SCENE_ID}} of a sci-fi thriller novel in Russian.
+
+Read these files in order:
+1. 01-MAIN-PROMPT.md (main task)
+2. 02-constraints.json (strict constraints)
+3. 03-blueprint.md (structure)
+4. 04-style-guide.md (style)
+
+Generate {{WORD_COUNT_TARGET}} words of literary Russian prose following ALL constraints.
+
+Save output to:
+- output/scene-{{SCENE_ID}}-external.md (scene text)
+- output/compliance-external.json (compliance report)
+```
+
+### STEP 3: Verify Output
+
+Check `output/compliance-external.json`:
+- Status: "PASS" or "FAIL"?
+- All constraints met?
+- Word count in range?
+
+---
+
+## File Structure
+
+```
+external/
+├── 00-QUICK-START.md           <- You are here
+├── 01-MAIN-PROMPT.md           <- START HERE (main task)
+├── 02-constraints.json         <- CRITICAL constraints
+├── 03-blueprint.md             <- Scene structure
+├── 04-style-guide.md           <- Writing principles
+{{#if HAS_CHARACTER_CARDS}}├── 05-character-cards.md       <- Character context{{/if}}
+{{#if HAS_PREVIOUS_SCENES}}├── 06-previous-scenes.md       <- Previous scenes{{/if}}
+{{#if HAS_WORLD_BIBLE}}├── 07-world-bible.md           <- World bible{{/if}}
+├── PACKAGE-INFO.txt            <- Package metadata
+└── output/                     <- AI saves results here
+    ├── scene-{{SCENE_ID}}-external.md     <- Generated scene
+    └── compliance-external.json            <- Compliance report
+```
+
+---
+
+## Critical Constraints Summary
+
+{{CONSTRAINTS_SUMMARY}}
+
+---
+
+## What AI Should Produce
+
+### File 1: Scene Text
+
+`output/scene-{{SCENE_ID}}-external.md`
+
+- {{WORD_COUNT_TARGET}} words
+- Russian language
+- Literary prose quality
+- All constraints met
+
+### File 2: Compliance Report
+
+`output/compliance-external.json`
+
+```json
+{
+  "scene_id": "{{SCENE_ID}}",
+  "word_count": [actual_count],
+  "constraints_met": { ... },
+  "status": "PASS/FAIL",
+  "notes": []
+}
+```
+
+---
+
+## Success Criteria
+
+Scene is **SUCCESSFUL** if:
+
+- All critical constraints met
+- Word count {{WORD_COUNT_TARGET}}
+- Russian language (literary quality)
+- Beat structure present
+- Prose style follows guidelines (no lists, sensory weaving)
+- Compliance report: status "PASS"
+
+---
+
+## Troubleshooting
+
+**Problem**: "Which file to read first?"
+-> **Solution**: `01-MAIN-PROMPT.md`
+
+**Problem**: "Blueprint says X but constraints say Y"
+-> **Solution**: Constraints (02-constraints.json) override blueprint
+
+**Problem**: "Can't fit word count"
+-> **Solution**: Expand atmospheric details, prioritize longer beats
+
+**Problem**: "What if I mess up constraint?"
+-> **Solution**: Mark status "FAIL", explain in notes, be honest
+
+---
+
+## Next Steps After Generation
+
+1. AI generates -> saves to `output/`
+2. You read `output/scene-{{SCENE_ID}}-external.md`
+3. Check `output/compliance-external.json` (status PASS/FAIL)
+4. Return to Claude Code and type "ready"
+5. Validation pipeline runs automatically
+
+---
+
+**Ready?** -> Start with `01-MAIN-PROMPT.md`
+
+**Good luck!**

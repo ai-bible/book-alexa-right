@@ -26,6 +26,7 @@ venv.bak/
 # Editors
 .vscode/
 .idea/
+.obsidian/
 
 # OS-specific
 .DS_Store
@@ -37,3 +38,6 @@ CLAUDE.local.md              # Local CLAUDE.md files not intended for sharing
 
 # MkDocs build output
 /site/
+.claude/settings.local.json
+.mcp.json
+session.lock

@@ -1,0 +1,19 @@
+Fixed in revision: 2025-12-22
+Verified by: code-reviewer agent
+
+## Verification Details
+
+**Fix Location:** `.claude/hooks/session_track_hook.py` line 122
+
+**Implementation:**
+- Hook no longer duplicates tracking logic
+- Removed direct `session.json` manipulation
+- Now calls `_add_cow_file()` utility function from `session_utils.py`
+- Single source of truth for CoW tracking logic
+
+**Verification Method:**
+- Syntax check passed: `python -m py_compile`
+- Import chain verified: Hook can import `_add_cow_file` from `session_utils`
+- Code review confirmed DRY principle compliance
+
+**Status:** ✅ RESOLVED
